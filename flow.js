@@ -158,8 +158,13 @@
 
   // Building number per cell (0 = open ground), stored as run lengths.
   function decodeBuildings(data) {
-    const ids = new Uint16Array(data.width * data.height);
-    const runs = binary(data.buildings.runs), values = binary(data.buildings.values);
+    return decodeRuns(data.buildings.runs, data.buildings.values, data.width * data.height);
+  }
+
+  // A grid of whole numbers stored as base64 (run lengths, values).
+  function decodeRuns(runsB64, valuesB64, n) {
+    const ids = new Uint16Array(n);
+    const runs = binary(runsB64), values = binary(valuesB64);
     for (let r = 0, i = 0; r * 2 < values.length; r++) {
       const len = (runs.charCodeAt(4 * r) | (runs.charCodeAt(4 * r + 1) << 8) |
         (runs.charCodeAt(4 * r + 2) << 16) | (runs.charCodeAt(4 * r + 3) << 24)) >>> 0;
@@ -170,7 +175,35 @@
     return ids;
   }
 
-  const Flow = { compute, trace, decode, decodeBuildings, DX, DY, DIST };
+  // What changed between two runs of compute(), as lists of cells.
+  //   gained - at least minArea more land now drains through the cell, and no flow
+  //            path ran within `near` cells of it before
+  //   lost   - the reverse: a flow path that is gone, with no new one within `near`
+  // The `near` test stops a path that only shuffles sideways counting as a change.
+  // Cells flagged in `skip` (buildings, the barrier itself) are left out.
+  function changes(before, after, width, height, minArea, near, skip) {
+    const pathNear = (acc, i) => {
+      const cx = i % width, cy = (i - cx) / width;
+      const x0 = Math.max(0, cx - near), x1 = Math.min(width - 1, cx + near);
+      const y0 = Math.max(0, cy - near), y1 = Math.min(height - 1, cy + near);
+      for (let y = y0; y <= y1; y++) {
+        for (let j = y * width + x0, end = y * width + x1; j <= end; j++) {
+          if (acc[j] >= minArea && !(skip && skip[j])) return true;
+        }
+      }
+      return false;
+    };
+    const gained = [], lost = [];
+    for (let i = 0, n = width * height; i < n; i++) {
+      if (skip && skip[i]) continue;
+      const more = after.acc[i] - before.acc[i];
+      if (more >= minArea) { if (!pathNear(before.acc, i)) gained.push(i); }
+      else if (-more >= minArea && after.acc[i] < minArea) { if (!pathNear(after.acc, i)) lost.push(i); }
+    }
+    return { gained, lost };
+  }
+
+  const Flow = { compute, trace, decode, decodeBuildings, decodeRuns, changes, DX, DY, DIST };
   if (typeof module !== 'undefined' && module.exports) module.exports = Flow;
   else globalThis.Flow = Flow;
 })();
