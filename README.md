@@ -119,7 +119,7 @@ takes about ten minutes. After that it reuses them and takes about a minute.
 | Auckland Part 1 LiDAR point cloud (2024), about 18 points per m² | OpenTopography open bucket, no key: `https://opentopography.s3.sdsc.edu/pc-bulk/NZ24_Auckland/CL2_<sheet>_2024_1000_<row><col>.laz` | Published by LINZ, whose elevation data is CC BY 4.0. Not checked for this survey: see its OpenTopography page |
 | NZ Primary Parcels | LINZ on ArcGIS Online, no API key: `https://services.arcgis.com/xdsHIIxuCWByZiCB/arcgis/rest/services/LINZ_NZ_Primary_Parcels/FeatureServer/0` | CC BY 4.0, Crown copyright, Toitū Te Whenua LINZ |
 | Overland Flow Paths | Auckland Council: `https://services1.arcgis.com/n4yPwebTjJCmXB6W/arcgis/rest/services/Overland_Flow_Paths/FeatureServer/0` | "Creative Commons (refer to Healthy Waters)". Credit: WSP; Auckland Council Healthy Waters, Geospatial |
-| Basemaps (loaded live, not stored here) | OpenStreetMap; Esri World Imagery | As credited on the map |
+| Basemaps (loaded live, not stored here) | OpenStreetMap, or Esri World Street Map when a page is opened from disk; Esri World Imagery | As credited on the map |
 
 Terrain tiles are named by NZ Topo50 sheet, for example `BA31_10000_0405.tiff`.
 `tile_name()` in `fetch_data.py` works out the tile for a point. Point cloud tiles are

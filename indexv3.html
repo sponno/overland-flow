@@ -268,8 +268,13 @@ function init() {
     document.getElementById('top').open = false;
   }
   const basemaps = {
-    streets: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxNativeZoom: 19, maxZoom: 21, attribution: '© OpenStreetMap contributors' }),
+    // openstreetmap.org sends "Access blocked" tiles to a page opened from disk, because it
+    // has no web address to give as a referrer. Esri's street map stands in for it there.
+    streets: location.protocol === 'file:'
+      ? L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+        maxNativeZoom: 19, maxZoom: 21, attribution: 'Street map © Esri and its data providers' })
+      : L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxNativeZoom: 19, maxZoom: 21, attribution: '© OpenStreetMap contributors' }),
     aerial: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       maxNativeZoom: 19, maxZoom: 21, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics' }),
   };
