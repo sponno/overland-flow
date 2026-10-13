@@ -265,8 +265,11 @@ def main():
     index = Index(points)
     print(f"{len(points):,} points along {sum(1 for s in lines if s)} boundaries")
 
-    results = [scan(segs, points, height, index, profile=f["grade"] == 2) if segs else {"verdict": "none"}
-               for f, segs in zip(fences, lines)]
+    # A side view is kept for the fences the pages open one at a time: those that reroute water
+    # onto a new property (v3), and those that would need consent (test_rules.js, if it has run).
+    rules = load_js("rules.js")["fences"] if (HERE / "rules.js").exists() else [{}] * len(fences)
+    results = [scan(segs, points, height, index, profile=f["grade"] == 2 or r.get("outcome") == "consent")
+               if segs else {"verdict": "none"} for f, r, segs in zip(fences, rules, lines)]
     control = [scan(segs, points, height, index) for segs in controls if segs]
 
     def tally(rows):
