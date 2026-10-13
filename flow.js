@@ -143,8 +143,10 @@
     return path;
   }
 
+  const binary = (b64) => typeof atob === 'function' ? atob(b64) : Buffer.from(b64, 'base64').toString('binary');
+
   function decode(data) {
-    const bin = typeof atob === 'function' ? atob(data.dem) : Buffer.from(data.dem, 'base64').toString('binary');
+    const bin = binary(data.dem);
     const n = data.width * data.height;
     const z = new Float32Array(n);
     for (let i = 0; i < n; i++) {
@@ -154,7 +156,21 @@
     return z;
   }
 
-  const Flow = { compute, trace, decode, DX, DY, DIST };
+  // Building number per cell (0 = open ground), stored as run lengths.
+  function decodeBuildings(data) {
+    const ids = new Uint16Array(data.width * data.height);
+    const runs = binary(data.buildings.runs), values = binary(data.buildings.values);
+    for (let r = 0, i = 0; r * 2 < values.length; r++) {
+      const len = (runs.charCodeAt(4 * r) | (runs.charCodeAt(4 * r + 1) << 8) |
+        (runs.charCodeAt(4 * r + 2) << 16) | (runs.charCodeAt(4 * r + 3) << 24)) >>> 0;
+      const v = values.charCodeAt(2 * r) | (values.charCodeAt(2 * r + 1) << 8);
+      if (v) ids.fill(v, i, i + len);
+      i += len;
+    }
+    return ids;
+  }
+
+  const Flow = { compute, trace, decode, decodeBuildings, DX, DY, DIST };
   if (typeof module !== 'undefined' && module.exports) module.exports = Flow;
   else globalThis.Flow = Flow;
 })();

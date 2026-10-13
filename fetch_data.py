@@ -10,6 +10,7 @@ Pulls:
   - Auckland 2024 1 m DEM (bare earth) from the LINZ nz-elevation open bucket,
     reading only the window we need from the cloud-optimised GeoTIFFs.
   - Auckland Council's mapped overland flow paths for the same box.
+  - LINZ building outlines for the same box, burnt onto the grid.
 
 The DEM is resampled onto a Web Mercator grid at 1 m ground resolution so it
 lines up exactly with web map tiles.
@@ -25,6 +26,7 @@ from pathlib import Path
 import numpy as np
 import rasterio
 from pyproj import Transformer
+from rasterio.features import rasterize
 from rasterio.transform import from_origin
 from rasterio.warp import Resampling, reproject
 
@@ -37,6 +39,9 @@ LABEL = "Top of Vermont St"
 
 DEM_BASE = "https://nz-elevation.s3.ap-southeast-2.amazonaws.com/auckland/auckland-part-1_2024/dem_1m/2193"
 OLFP_URL = "https://services1.arcgis.com/n4yPwebTjJCmXB6W/arcgis/rest/services/Overland_Flow_Paths/FeatureServer/0/query"
+# LINZ publishes its national layers on ArcGIS Online with no API key. Primary parcels
+# are on the same host: .../LINZ_NZ_Primary_Parcels/FeatureServer
+BUILDINGS_URL = "https://services.arcgis.com/xdsHIIxuCWByZiCB/arcgis/rest/services/LINZ_NZ_Building_Outlines/FeatureServer/0/query"
 
 NODATA_U16 = 65535
 SHEET_ROWS = ["AS", "AT", "AU", "AV", "AW", "AX", "AY", "AZ", "BA", "BB", "BC", "BD", "BE"]
@@ -80,33 +85,63 @@ def fetch_dem(lat, lon, extent):
                 resampling=Resampling.bilinear,
             )
         dem = np.where(np.isnan(dem), part, dem)
-    return dem, (s_lat, w_lon, n_lat, e_lon), tiles, (ext_w, ext_n)
+    return dem, (s_lat, w_lon, n_lat, e_lon), tiles, (ext_w, ext_n), transform
 
 
-def fetch_olfp(bounds):
+def arcgis_features(url, bounds, out_fields):
+    """Every feature in the box from an ArcGIS feature layer, as GeoJSON in WGS84."""
     s, w, n, e = bounds
-    feats, offset = [], 0
+    feats = []
     while True:
         q = urllib.parse.urlencode({
             "where": "1=1", "geometry": f"{w},{s},{e},{n}", "geometryType": "esriGeometryEnvelope",
             "inSR": 4326, "outSR": 4326, "spatialRel": "esriSpatialRelIntersects",
-            "outFields": "CatchmentAreaGroup", "geometryPrecision": 6,
-            "resultOffset": offset, "f": "geojson",
+            "outFields": out_fields, "geometryPrecision": 7,
+            "resultOffset": len(feats), "f": "geojson",
         })
-        with urllib.request.urlopen(f"{OLFP_URL}?{q}") as r:
+        with urllib.request.urlopen(f"{url}?{q}") as r:
             page = json.load(r)
         feats += page.get("features", [])
-        if not page.get("properties", {}).get("exceededTransferLimit") and not page.get("exceededTransferLimit"):
-            break
-        offset = len(feats)
-    return [
-        {"g": f["properties"]["CatchmentAreaGroup"], "c": f["geometry"]["coordinates"]}
-        for f in feats if f.get("geometry") and f["geometry"]["type"] == "LineString"
-    ] + [
-        {"g": f["properties"]["CatchmentAreaGroup"], "c": line}
-        for f in feats if f.get("geometry") and f["geometry"]["type"] == "MultiLineString"
-        for line in f["geometry"]["coordinates"]
-    ]
+        more = page.get("properties", {}).get("exceededTransferLimit") or page.get("exceededTransferLimit")
+        if not more or not page.get("features"):
+            return [f for f in feats if f.get("geometry")]
+
+
+def fetch_olfp(bounds):
+    lines = []
+    for f in arcgis_features(OLFP_URL, bounds, "CatchmentAreaGroup"):
+        g = f["geometry"]
+        parts = [g["coordinates"]] if g["type"] == "LineString" else g["coordinates"]
+        lines += [{"g": f["properties"]["CatchmentAreaGroup"], "c": part} for part in parts]
+    return lines
+
+
+def fetch_buildings(bounds, transform, shape):
+    """Building outlines burnt onto the grid: each cell holds 0 or a building number.
+
+    A cell counts as building when its centre is inside the outline, so a gap of a
+    metre or more between two houses stays open for water.
+    """
+    to_merc = Transformer.from_crs(4326, 3857, always_xy=True)
+    feats = arcgis_features(BUILDINGS_URL, bounds, "building_id")
+    shapes, linz_ids = [], []
+    for f in feats:
+        g = f["geometry"]
+        polys = [g["coordinates"]] if g["type"] == "Polygon" else g["coordinates"]
+        merc = [[[to_merc.transform(x, y) for x, y in ring] for ring in poly] for poly in polys]
+        linz_ids.append(f["properties"]["building_id"])
+        shapes.append(({"type": "MultiPolygon", "coordinates": merc}, len(linz_ids)))
+    ids = rasterize(shapes, out_shape=shape, transform=transform, fill=0, dtype="uint16")
+    return ids, linz_ids
+
+
+def run_length(a):
+    """Flatten a grid to (run lengths, values): long empty stretches cost almost nothing."""
+    flat = a.ravel()
+    starts = np.concatenate([[0], np.flatnonzero(np.diff(flat)) + 1])
+    lengths = np.diff(np.concatenate([starts, [flat.size]]))
+    b64 = lambda arr, dtype: base64.b64encode(arr.astype(dtype).tobytes()).decode()
+    return b64(lengths, "<u4"), b64(flat[starts], "<u2")
 
 
 def main():
@@ -116,7 +151,7 @@ def main():
         extent = tuple(int(v) for v in sys.argv[3:7]) if len(sys.argv) > 6 else EXTENT
         label = sys.argv[7] if len(sys.argv) > 7 else f"{lat:.5f}, {lon:.5f}"
 
-    dem, bounds, tiles, home = fetch_dem(lat, lon, extent)
+    dem, bounds, tiles, home, transform = fetch_dem(lat, lon, extent)
     valid = ~np.isnan(dem)
     zmin = math.floor(float(dem[valid].min()))
     q = np.full(dem.shape, NODATA_U16, dtype="<u2")
@@ -127,6 +162,10 @@ def main():
     olfp = fetch_olfp(bounds)
     print(f"council flow paths: {len(olfp)} lines")
 
+    building_cells, linz_ids = fetch_buildings(bounds, transform, dem.shape)
+    runs, values = run_length(building_cells)
+    print(f"buildings: {len(linz_ids)}, covering {(building_cells > 0).mean() * 100:.0f}% of the map")
+
     data = {
         "label": label, "lat": lat, "lon": lon,
         "bounds": bounds,  # south, west, north, east
@@ -135,8 +174,11 @@ def main():
         "cell": 1.0,  # ground metres per cell
         "zmin": zmin, "zscale": 0.01, "nodata": NODATA_U16,
         "source": {"dem": "LINZ Auckland Part 1 LiDAR 1m DEM (2024)", "tiles": tiles,
-                   "olfp": "Auckland Council Overland Flow Paths (WSP 2019, 2016/17 LiDAR)"},
+                   "olfp": "Auckland Council Overland Flow Paths (WSP 2019, 2016/17 LiDAR)",
+                   "buildings": "LINZ NZ Building Outlines"},
         "olfp": olfp,
+        # Cell value n means the nth building; linz_ids[n - 1] is its LINZ building_id.
+        "buildings": {"runs": runs, "values": values, "linz_ids": linz_ids},
         "dem": base64.b64encode(q.tobytes()).decode(),
     }
     out = Path(__file__).with_name("data.js")
