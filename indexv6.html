@@ -366,11 +366,11 @@ function init() {
     return out;
   }
 
-  // How much rain has to run off the land above before the pond is full.
+  // How much rain has to run off the land that drains into the pond before it is full.
   function fillText(f) {
-    if (f.rule.pond === 'none' || !f.volume) return '';
-    const mm = f.volume / f.area * 1000;
-    return `The pond holds about ${Math.round(f.volume).toLocaleString()} m³, which is ${mm < 1 ? 'less than 1' : 'about ' + Math.round(mm)} mm of rain running off that land.`;
+    const mm = f.rule.fill;
+    if (!mm) return '';
+    return `The water stands that deep once ${mm < 1 ? 'less than 1' : 'about ' + Math.round(mm).toLocaleString()} mm of rain has run off the land that drains into it.`;
   }
 
   // ---- map -----------------------------------------------------------------

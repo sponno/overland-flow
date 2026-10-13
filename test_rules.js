@@ -43,6 +43,7 @@ const skip = new Uint8Array(N);
 for (let i = 0; i < N; i++) if (buildingAt[i]) { walls[i] = F.buildingHeight; skip[i] = 1; }
 const base = Flow.compute(z, W, H, walls);
 const isGained = new Uint8Array(N);
+const inPond = new Uint8Array(N); // scratch for walking each pond: 1 = water rose here, 2 = already counted
 // Lots with a flow path on open ground before any fence goes up.
 const hadPath = new Uint8Array(P.parcels.length + 1);
 for (let i = 0; i < N; i++) if (!skip[i] && base.acc[i] >= F.minArea) hadPath[parcelAt[i]] = 1;
@@ -57,17 +58,41 @@ function test(fence) {
   const { gained } = Flow.changes(base, next, W, H, F.minArea, F.near, skip);
 
   // Ponding: where water now stands that didn't, and on whose land. Public land is one lot, 0.
-  const ponded = new Map();
+  // A fence can make several separate ponds, so they are walked one at a time: each has its
+  // own volume and its own land draining into it.
+  const risen = [];
   for (let i = 0; i < N; i++) {
-    if (skip[i]) continue;
-    const rise = next.filled[i] - base.filled[i];
-    if (rise < POND_DEPTH) continue;
-    const p = isPublic(parcelAt[i]) ? 0 : parcelAt[i];
-    const lot = ponded.get(p) || { area: 0, depth: 0 };
-    lot.area++;
-    if (rise > lot.depth) lot.depth = rise;
-    ponded.set(p, lot);
+    if (!skip[i] && next.filled[i] - base.filled[i] > 0.01) { risen.push(i); inPond[i] = 1; }
   }
+  const ponds = [], ponded = new Map();
+  for (const start of risen) {
+    if (inPond[start] !== 1) continue;
+    const one = { volume: 0, drains: 0, lots: new Map() }; // lots: m² of ponding on each lot
+    const stack = [start];
+    inPond[start] = 2;
+    while (stack.length) {
+      const i = stack.pop(), rise = next.filled[i] - base.filled[i];
+      one.volume += rise;
+      if (next.acc[i] > one.drains) one.drains = next.acc[i];
+      if (rise >= POND_DEPTH) {
+        const p = isPublic(parcelAt[i]) ? 0 : parcelAt[i];
+        const lot = ponded.get(p) || { area: 0, depth: 0 };
+        lot.area++;
+        if (rise > lot.depth) lot.depth = rise;
+        ponded.set(p, lot);
+        one.lots.set(p, (one.lots.get(p) || 0) + 1);
+      }
+      const x = i % W, y = (i - x) / W;
+      for (let d = 0; d < 8; d++) {
+        const nx = x + Flow.DX[d], ny = y + Flow.DY[d];
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const j = ny * W + nx;
+        if (inPond[j] === 1) { inPond[j] = 2; stack.push(j); }
+      }
+    }
+    if (one.lots.size) ponds.push(one);
+  }
+  for (const i of risen) inPond[i] = 0;
   for (const [p, lot] of ponded) if (lot.area < POND_AREA) ponded.delete(p);
   const street = isPublic(other);
   const far = street ? 0 : other;
@@ -83,6 +108,15 @@ function test(fence) {
   const home = pond === 'beyond' && !street && onSide !== onFar ? (onSide ? side : far)
     : pond === 'beyond' && street ? side : -1;
   const beyond = [...ponded.entries()].filter(([p]) => pond === 'beyond' && p !== home);
+
+  // How much rain it takes before water stands where the test counts it: a pond's volume over
+  // the land that drains into it. With several ponds, it is the quickest to fill of those that
+  // put enough water on a lot beyond the boundary (or on any lot, when none is beyond).
+  const counted = new Set(pond === 'beyond' ? beyond.map(([p]) => p) : ponded.keys());
+  const reaches = (one, least) => [...one.lots].some(([p, area]) => counted.has(p) && area >= least);
+  const full = (list) => Math.min(...list.map((one) => one.volume / one.drains * 1000));
+  const enough = ponds.filter((one) => reaches(one, POND_AREA)), any = ponds.filter((one) => reaches(one, 1));
+  const fill = enough.length ? full(enough) : any.length ? full(any) : 0;
 
   // Diverting: lots the flow path now enters or leaves at a point it didn't use before.
   // A lot that had no flow path and now has one counts however the water got in.
@@ -110,6 +144,8 @@ function test(fence) {
     pondStreet: beyond.filter(([p]) => p === 0).reduce((s, [, lot]) => s + lot.area, 0),
     pondDepth: Math.round(Math.max(0, ...(pond === 'beyond' ? beyond : [...ponded.entries()]).map(([, lot]) => lot.depth)) * 100) / 100,
     pondArea: [...ponded.values()].reduce((s, lot) => s + lot.area, 0),
+    // Millimetres of rain, all of it running off, before that pond is full.
+    fill: Math.round(fill * 10) / 10,
     // Lots whose entry or exit point moved, by LINZ parcel id.
     moved: fence.newRun >= F.minRun ? moved.map(idOf) : [],
   };

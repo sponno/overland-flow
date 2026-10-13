@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Figures for the write-up</title>
+<style>
+  body { margin: 24px; font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; color: #14202e; background: #f3f5f8; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p { margin: 0 0 16px; color: #5b6b7c; max-width: 70ch; }
+  section { display: grid; grid-template-columns: repeat(2, 380px); gap: 8px 12px; margin-bottom: 28px; }
+  section h2 { grid-column: 1 / -1; font-size: 16px; margin: 0; }
+  section small { color: #5b6b7c; }
+  img { display: block; width: 380px; height: 260px; border-radius: 8px; box-shadow: 0 0 0 1px rgba(20, 32, 46, 0.12); }
+</style>
+</head>
+<body>
+<h1>Figures for the write-up</h1>
+<p>Draws the before and after pictures used in <a href="idea.html">idea.html</a>, from the same data and model as the maps. Each is a real fence line here: properties from LINZ parcels, buildings from LINZ outlines, water from the model. To save them as files, run <code>python3 save_figures.py</code>, which reads the images out of this page.</p>
+<div id="figures"></div>
+
+<script src="data.js"></script>
+<script src="parcels.js"></script>
+<script src="fences.js"></script>
+<script src="rules.js"></script>
+<script src="flow.js"></script>
+<script>
+// One fence line per point the write-up makes, by its place in fences.js.
+const EXAMPLES = [
+  { name: 'ponding', fence: 515, title: 'Fails on ponding' },
+  { name: 'diverting', fence: 38, title: 'Fails on diverting' },
+  { name: 'passes', fence: 436, title: 'Passes both tests' },
+  { name: 'depends', fence: 739, title: 'Depends whose fence it is' },
+  { name: 'under', fence: 906, title: 'Fails, but under the 4,000 m² line' },
+];
+// figures.html?try=12,34 draws other fence lines instead, to look for better examples.
+const trying = new URLSearchParams(location.search).get('try');
+if (trying) EXAMPLES.splice(0, EXAMPLES.length, ...trying.split(',').map((k) => ({ name: 'try-' + k, fence: +k, title: 'Fence ' + k })));
+const WIDE = 760, HIGH = 520; // pixels, drawn at twice the size they are shown
+const MARGIN = 16, MIN_SPAN = 62; // metres
+
+const D = FLOW_DATA, P = PARCEL_DATA, F = FENCE_DATA, RULES = RULE_DATA, W = D.width, H = D.height, N = W * H;
+const z = Flow.decode(D), buildingAt = Flow.decodeBuildings(D);
+const parcelAt = Flow.decodeRuns(P.runs, P.values, N);
+const isPublic = (p) => p === 0 || P.parcels[p - 1].intent === 'Road' || P.parcels[p - 1].intent === 'Hydro';
+const numberOf = new Map(P.parcels.map((p, k) => [p.id, k + 1]));
+const walls = new Float32Array(N), skip = new Uint8Array(N);
+for (let i = 0; i < N; i++) if (buildingAt[i]) { walls[i] = F.buildingHeight; skip[i] = 1; }
+const base = Flow.compute(z, W, H, walls);
+
+const COLOUR = {
+  lot: '#f7f4ec', street: '#dde2e8', building: '#b3bcc7', boundary: '#7b8794',
+  water: '#1466e0', trickle: '#9cc6ff', route: '#e11d74', dry: '#4b5563', fence: '#0d1520',
+  pond: 'rgba(36, 116, 240, 0.5)', harmed: '#fbd5d5', uphill: '#fdebc3',
+};
+
+function figure(example) {
+  let c = 0;
+  const f = F.fences[example.fence], rule = RULES.fences[example.fence];
+  const cells = f.cells.map((step) => (c += step));
+  for (const i of cells) { walls[i] = F.height; skip[i] = 1; }
+  const next = Flow.compute(z, W, H, walls);
+  const { gained, lost } = Flow.changes(base, next, W, H, F.minArea, F.near, skip);
+  const pond = [];
+  for (let i = 0; i < N; i++) if (!skip[i] && next.filled[i] - base.filled[i] >= RULES.pondDepth) pond.push(i);
+  for (const i of cells) { walls[i] = 0; skip[i] = 0; }
+  const fenced = new Set(cells), isGained = new Set(gained);
+
+  // The window: everything that changes, with room round it, in the picture's shape.
+  let x0 = W, y0 = H, x1 = 0, y1 = 0;
+  for (const i of [...cells, ...gained, ...lost, ...pond]) {
+    const x = i % W, y = Math.floor(i / W);
+    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+  }
+  let span = Math.max(MIN_SPAN, x1 - x0 + 1 + 2 * MARGIN, (y1 - y0 + 1 + 2 * MARGIN) * WIDE / HIGH);
+  const left = Math.round((x0 + x1 + 1) / 2 - span / 2), top = Math.round((y0 + y1 + 1) / 2 - span * HIGH / WIDE / 2);
+  const s = WIDE / span, cols = Math.ceil(span), rows = Math.ceil(span * HIGH / WIDE);
+  const inside = (x, y) => x >= left && y >= top && x < left + cols && y < top + rows && x >= 0 && y >= 0 && x < W && y < H;
+  const px = (i) => [((i % W) + 0.5 - left) * s, (Math.floor(i / W) + 0.5 - top) * s];
+
+  // Lots a solid fence would harm (red), or the uphill lot when the water stays on it (amber).
+  const tint = new Map();
+  for (const id of [...rule.pondLots, ...rule.moved]) tint.set(numberOf.get(id), COLOUR.harmed);
+  if (rule.pond === 'uphill') {
+    const on = new Map();
+    for (const i of pond) on.set(parcelAt[i], (on.get(parcelAt[i]) || 0) + 1);
+    for (const [p, n] of on) if (n >= RULES.pondArea && !isPublic(p)) tint.set(p, COLOUR.uphill);
+  }
+
+  function draw(after) {
+    const canvas = Object.assign(document.createElement('canvas'), { width: WIDE, height: HIGH });
+    const ctx = canvas.getContext('2d'), model = after ? next : base;
+    ctx.lineCap = ctx.lineJoin = 'round';
+    const each = (fn) => { for (let y = top; y < top + rows; y++) for (let x = left; x < left + cols; x++) if (inside(x, y)) fn(y * W + x, x, y); };
+    const square = (x, y) => ctx.fillRect(Math.floor((x - left) * s), Math.floor((y - top) * s), Math.ceil(s), Math.ceil(s));
+
+    // Ground: private lots, street, buildings.
+    each((i, x, y) => {
+      const p = parcelAt[i];
+      ctx.fillStyle = isPublic(p) ? COLOUR.street : (after && tint.get(p)) || COLOUR.lot;
+      square(x, y);
+    });
+    each((i, x, y) => { if (buildingAt[i]) { ctx.fillStyle = COLOUR.building; square(x, y); } });
+    // Property boundaries, along the edges between cells of different lots.
+    ctx.strokeStyle = COLOUR.boundary; ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    each((i, x, y) => {
+      const p = parcelAt[i], a = (x - left) * s, b = (y - top) * s;
+      if (x + 1 < W && parcelAt[i + 1] !== p && !(isPublic(p) && isPublic(parcelAt[i + 1]))) { ctx.moveTo(a + s, b); ctx.lineTo(a + s, b + s); }
+      if (y + 1 < H && parcelAt[i + W] !== p && !(isPublic(p) && isPublic(parcelAt[i + W]))) { ctx.moveTo(a, b + s); ctx.lineTo(a + s, b + s); }
+    });
+    ctx.stroke();
+
+    // Standing water, then the water on the move.
+    if (after) { ctx.fillStyle = COLOUR.pond; for (const i of pond) if (inside(i % W, Math.floor(i / W))) square(i % W, Math.floor(i / W)); }
+    const line = (i, colour, width, dash) => {
+      const r = model.receiver[i];
+      if (r < 0) return;
+      ctx.strokeStyle = colour; ctx.lineWidth = width; ctx.setLineDash(dash || []);
+      ctx.beginPath(); ctx.moveTo(...px(i)); ctx.lineTo(...px(r)); ctx.stroke();
+    };
+    const visible = (i) => !skip[i] && !(after && fenced.has(i));
+    each((i) => { if (visible(i) && model.acc[i] >= 300 && model.acc[i] < F.minArea) line(i, COLOUR.trickle, 1.6); });
+    const width = (acc) => 3.5 + Math.min(3, Math.log10(acc / F.minArea)) * 2.2;
+    if (after) lost.forEach((i, k) => { // every other step, so it reads as a dashed line
+      if (k % 2 || !inside(i % W, Math.floor(i / W))) return;
+      ctx.strokeStyle = COLOUR.dry; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(...px(i)); ctx.lineTo(...px(base.receiver[i])); ctx.stroke();
+    });
+    each((i) => { if (visible(i) && model.acc[i] >= F.minArea) line(i, after && isGained.has(i) ? COLOUR.route : COLOUR.water, width(model.acc[i])); });
+
+    // Arrowheads down the main flow path, so it is clear which way is downhill.
+    const crossing = cells.reduce((best, i) => base.acc[i] > base.acc[best] ? i : best, cells[0]);
+    let seed = crossing;
+    for (let n = 0; n < 9; n++) { // a few steps up the old path from the fence
+      let up = -1;
+      for (let d = 0; d < 8; d++) {
+        const j = seed + Flow.DX[d] + Flow.DY[d] * W;
+        if (j >= 0 && j < N && base.receiver[j] === seed && (up < 0 || base.acc[j] > base.acc[up])) up = j;
+      }
+      if (up < 0 || base.acc[up] < F.minArea) break;
+      seed = up;
+    }
+    const path = [];
+    for (let i = seed, n = 0; i >= 0 && n < 400 && inside(i % W, Math.floor(i / W)); i = model.receiver[i], n++) path.push(i);
+    for (let k = 3; k + 2 < path.length; k += 11) {
+      if (!after && fenced.has(path[k])) continue;
+      const [ax, ay] = px(path[k - 2]), [bx, by] = px(path[k + 2]), [cx, cy] = px(path[k]);
+      const angle = Math.atan2(by - ay, bx - ax), size = 9;
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(angle);
+      ctx.fillStyle = '#fff'; ctx.strokeStyle = after && isGained.has(path[k]) ? COLOUR.route : COLOUR.water; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(size, 0); ctx.lineTo(-size * 0.7, size * 0.85); ctx.lineTo(-size * 0.7, -size * 0.85); ctx.closePath();
+      ctx.fill(); ctx.stroke(); ctx.restore();
+    }
+
+    // The fence: solid once it is up, dotted where it would go.
+    ctx.fillStyle = COLOUR.fence;
+    cells.forEach((i, k) => {
+      if (!after && k % 2) return;
+      ctx.globalAlpha = after ? 1 : 0.55;
+      ctx.beginPath(); ctx.arc(...px(i), after ? s * 0.62 : s * 0.3, 0, 2 * Math.PI); ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+
+    // Scale bar.
+    const metres = span > 110 ? 20 : 10, bx = 18, by = HIGH - 20;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'; ctx.fillRect(bx - 8, by - 26, metres * s + 16, 38);
+    ctx.strokeStyle = ctx.fillStyle = '#14202e'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + metres * s, by); ctx.stroke();
+    ctx.font = '600 20px -apple-system, "Segoe UI", sans-serif'; ctx.fillText(`${metres} m`, bx, by - 7);
+    return canvas.toDataURL('image/png');
+  }
+  return { before: draw(false), after: draw(true), span: Math.round(span) };
+}
+
+const out = document.getElementById('figures');
+for (const example of EXAMPLES) {
+  const { before, after, span } = figure(example);
+  out.insertAdjacentHTML('beforeend', `<section>
+    <h2>${example.title} <small>fence ${example.fence} in fences.js, ${span} m across</small></h2>
+    <img alt="Without the fence" data-name="${example.name}-before" src="${before}">
+    <img alt="With a solid fence" data-name="${example.name}-after" src="${after}">
+  </section>`);
+}
+</script>
+</body>
+</html>

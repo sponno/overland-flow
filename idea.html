@@ -58,6 +58,25 @@
   .status.fail { border-color: var(--fail); }
   .status.decide { border-color: var(--decide); }
 
+  /* Five real fence lines, each drawn without the fence and with it. */
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; color: var(--muted); margin: 0 0 4px; }
+  .legend span { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+  .legend i { width: 22px; height: 5px; border-radius: 3px; flex: none; }
+  .legend .patch { width: 18px; height: 14px; border-radius: 3px; }
+  .case { background: #fff; border-radius: 14px; padding: 18px 20px 16px; margin: 20px 0; box-shadow: 0 1px 2px rgba(20, 32, 46, 0.06), 0 0 0 1px rgba(20, 32, 46, 0.06); }
+  .case .tag { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 3px 10px; border-radius: 999px; margin-bottom: 8px; }
+  .tag.right { background: #e1f3e5; color: #1b6a2e; }
+  .tag.runsout { background: #fdebc3; color: #7a5200; }
+  .tag.misses { background: #fbdcdc; color: #9a1c1c; }
+  .case h3 { font-size: 20px; line-height: 1.25; letter-spacing: -0.01em; margin: 0 0 12px; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0 0 12px; }
+  .pair figure { margin: 0; }
+  .pair img { display: block; width: 100%; height: auto; border-radius: 8px; box-shadow: 0 0 0 1px rgba(20, 32, 46, 0.14); }
+  .pair figcaption { font-size: 13px; font-weight: 650; color: var(--muted); margin-top: 5px; }
+  .case p { font-size: 16px; line-height: 1.55; margin: 0 0 8px; }
+  .case .says { border-left: 3px solid #c9d2dc; padding-left: 12px; }
+  .case .seen { font-size: 14px; color: var(--muted); margin: 0; }
+
   .answer { font-size: 20px; line-height: 1.45; font-weight: 600; border-left: 4px solid var(--water); padding: 4px 0 4px 18px; margin: 24px 0; }
   .cta { display: inline-block; margin: 8px 12px 0 0; padding: 10px 16px; border-radius: 10px; background: var(--ink); color: #fff; font-weight: 600; font-size: 15px; text-decoration: none; }
   .cta.quiet { background: #fff; color: var(--ink); box-shadow: 0 0 0 1px #c9d2dc; }
@@ -72,6 +91,9 @@
     .lede { font-size: 18px; }
     h2 { font-size: 21px; margin-top: 36px; }
     .statuses { grid-template-columns: 1fr; }
+    .pair { grid-template-columns: 1fr; }
+    .case { padding: 16px 16px 14px; }
+    .case h3 { font-size: 18px; }
     .splitkey { font-size: 13px; }
     .answer { font-size: 18px; }
   }
@@ -122,6 +144,81 @@
 
   <p><b>So the blunt versions miss both ways.</b> 201 of the 310 fence lines that pass already have a fence or hedge all along them. The leaflet would have those owners cut them open for nothing. And 98 fence lines under the 4,000 m² line fail the same tests, where the rule doesn’t reach.</p>
 
+  <h2>Five real fence lines</h2>
+  <p>These are real places in the area, drawn from the same model, with no addresses. Each pair shows the ground as it is mapped, then with a solid 1.8 m fence on the one boundary. The first three show the Plan’s test giving the right answer. The last two show where the rule around it falls short.</p>
+  <div class="legend">
+    <span><i style="background:#0d1520"></i>the fence (dots: where it would go)</span>
+    <span><i style="background:#1466e0"></i>flow path, arrows point downhill</span>
+    <span><i style="background:#e11d74"></i>new route</span>
+    <span><i style="background:repeating-linear-gradient(90deg,#4b5563 0 6px,transparent 6px 11px)"></i>old route, now dry</span>
+    <span><i class="patch" style="background:#8fb6f3"></i>water standing</span>
+    <span><i class="patch" style="background:#fbd5d5"></i>property affected</span>
+    <span><i class="patch" style="background:#fdebc3"></i>uphill neighbour</span>
+    <span><i class="patch" style="background:#b3bcc7"></i>building</span>
+    <span><i class="patch" style="background:#dde2e8"></i>street</span>
+  </div>
+
+  <article class="case">
+    <span class="tag right">The test gets it right</span>
+    <h3>1. A fence that would flood the back yards behind it</h3>
+    <div class="pair">
+      <figure><img src="figs/ponding-before.png" width="760" height="520" alt="A flow path runs along the back of a row of sections, then down a side boundary to the street."><figcaption>Without the fence</figcaption></figure>
+      <figure><img src="figs/ponding-after.png" width="760" height="520" alt="With a fence on the side boundary, water stands across the back yards behind it and three neighbouring properties are shaded."><figcaption>With a solid fence</figcaption></figure>
+    </div>
+    <p>Rain from 4.3 ha runs along the back of these sections, then down a side boundary to the street. Stand a solid fence on that boundary and the water backs up behind it, up to 1.1 m deep, across the yards of three properties besides the one that shares the fence. About 7 mm of rain is enough to fill it. Then it spills round the top end and carries on down the same route.</p>
+    <p class="says"><b>The rule: fails.</b> The fence causes “ponding beyond the boundaries of the property”. Three neighbours take the water from a fence that isn’t theirs.</p>
+    <p class="seen">There now, from the air: something about 2.1 m high along 89% of the boundary, with an uneven top. A hedge, or a fence with plants over it. <a href="indexv6.html#69">On the map</a></p>
+  </article>
+
+  <article class="case">
+    <span class="tag right">The test gets it right</span>
+    <h3>2. A fence that would send the water next door</h3>
+    <div class="pair">
+      <figure><img src="figs/diverting-before.png" width="760" height="520" alt="A flow path comes along a back boundary and runs down between two houses to the street."><figcaption>Without the fence</figcaption></figure>
+      <figure><img src="figs/diverting-after.png" width="760" height="520" alt="With a fence across the back boundary, the flow path turns through two neighbouring properties to a different street and the old route is dry."><figcaption>With a solid fence</figcaption></figure>
+    </div>
+    <p>Rain from 4,170 m² comes along the back boundary and runs down between two houses to the street. A solid fence across the back turns it away. It goes through two other properties instead, one of which has no flow path now, and comes out on the next street. The old route runs dry. No water stands anywhere.</p>
+    <p class="says"><b>The rule: fails.</b> That is “diverting the entry or exit point”. A rule about ponding alone would never see this one.</p>
+    <p class="seen">There now, from the air: 1.9 m high with a level top, all the way along. It looks like a fence. <a href="indexv6.html#172">On the map</a></p>
+  </article>
+
+  <article class="case">
+    <span class="tag right">The test gets it right, the advice doesn’t</span>
+    <h3>3. A fence on one of the biggest flow paths, doing no harm</h3>
+    <div class="pair">
+      <figure><img src="figs/passes-before.png" width="760" height="520" alt="A large flow path crosses a short back boundary between buildings."><figcaption>Without the fence</figcaption></figure>
+      <figure><img src="figs/passes-after.png" width="760" height="520" alt="With a fence on that boundary, the flow path bends round the end of the fence and rejoins its route. No water stands."><figcaption>With a solid fence</figcaption></figure>
+    </div>
+    <p>Rain from 18 ha comes through here, 45 times the size at which the rule starts. A solid fence on this 11 m boundary barely matters. The water slips round the end and is back on its route within a few metres. Nothing ponds, and it crosses the same boundaries as before.</p>
+    <p class="says"><b>The rule: passes.</b> Any fence is fine here. But it is on a mapped flow path, so the leaflet’s advice is still to cut the palings 150 mm off the ground.</p>
+    <p class="says"><b>The catch.</b> The water gets round through the next boundary along. If that is fenced solid too, the answer changes. We test one fence at a time.</p>
+    <p class="seen">There now, from the air: 2.1 m high with a level top, all the way along. It looks like a fence. <a href="indexv6.html#447">On the map</a></p>
+  </article>
+
+  <article class="case">
+    <span class="tag runsout">The wording runs out</span>
+    <h3>4. Water on the uphill neighbour only</h3>
+    <div class="pair">
+      <figure><img src="figs/depends-before.png" width="760" height="520" alt="Thin trickles of runoff cross a long back boundary, and a flow path passes its right-hand end."><figcaption>Without the fence</figcaption></figure>
+      <figure><img src="figs/depends-after.png" width="760" height="520" alt="With a fence on the back boundary, water stands in the yard above it, all within one shaded property."><figcaption>With a solid fence</figcaption></figure>
+    </div>
+    <p>A solid fence along this back boundary traps the runoff from the yard above it: up to 32 cm deep over 178 m², all on the uphill neighbour’s land. It takes about 27 mm of rain to fill. The flow path at the right-hand end still gets past.</p>
+    <p class="says"><b>The rule: it depends.</b> Is that “beyond the boundaries of the property”? The fence is shared. If the downhill neighbour built it, this fails. If the uphill neighbour did, the water is on their own land and it passes. 151 fence lines here come down to that.</p>
+    <p class="seen">There now, from the air: 2.0 m high with a level top, all the way along. It looks like a fence. <a href="indexv6.html#356">On the map</a></p>
+  </article>
+
+  <article class="case">
+    <span class="tag misses">The threshold misses it</span>
+    <h3>5. The same harm, under the 4,000 m² line</h3>
+    <div class="pair">
+      <figure><img src="figs/under-before.png" width="760" height="520" alt="A small flow path runs between closely spaced houses and crosses a short boundary."><figcaption>Without the fence</figcaption></figure>
+      <figure><img src="figs/under-after.png" width="760" height="520" alt="With a fence on that boundary, water stands back along the path between the houses and three properties are shaded."><figcaption>With a solid fence</figcaption></figure>
+    </div>
+    <p>Only 2,834 m² drains to this fence line, so the Plan doesn’t count it as a flow path at all. A solid fence here still backs water up along the gap between the houses: 28 cm deep, onto three other properties, after about 7 mm of rain.</p>
+    <p class="says"><b>The rule: doesn’t apply.</b> It is the same failure as the first example, on the other side of an area threshold. Set it beside example 3: 18 ha and no harm, against 0.28 ha and three neighbours with water on their land.</p>
+    <p class="seen">There now, from the air: 1.6 m high with a level top, along 83% of it. It looks like a fence. <a href="indexv6.html#749">On the map</a></p>
+  </article>
+
   <h2>The idea</h2>
   <p>Give every fence line a status, worked out by the model rather than by a visit, and put it on the flow path map Council already keeps.</p>
 
@@ -164,7 +261,7 @@
   <h2>What we haven’t shown</h2>
   <ul>
     <li><b>Whether a fence is solid.</b> The laser can’t see a gap under the palings. That is the one fact a photo or a visit has to supply, and the map says which fences to get it for.</li>
-    <li><b>How much water.</b> The model knows where water goes and how deep it stands before it finds a way out, not how fast it arrives. Every pond that crosses a boundary would fill with 85 mm of runoff or less, and half with under 3 mm.</li>
+    <li><b>How much water.</b> The model knows where water goes and how deep it stands before it finds a way out, not how fast it arrives. Of the 173 ponds that cross a boundary, half would fill with under 3 mm of rain off the land that drains into them and nine in ten with 25 mm or less. Six would need more than 100 mm.</li>
     <li><b>Fences together.</b> We test one at a time. A row of solid fences down one gully is worse than any one of them.</li>
     <li><b>The cut-offs.</b> We call it ponding at 10 cm deep over 5 m² of a property, and a moved crossing at more than 5 m. The Plan gives no numbers. Council would set them.</li>
     <li><b>Anything on the ground.</b> One area, nothing checked on site. The rule’s wording is from Council’s 2020 practice note, not the Plan itself, and none of this is a legal opinion. Some of the biggest flow paths may be streams, which the Plan handles under other rules.</li>

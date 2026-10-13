@@ -92,7 +92,8 @@ are new: each fence says which boundary it was in v3 to v5.
 | File | What it is |
 | --- | --- |
 | `index.html` | The list of versions. |
-| `idea.html` | The write-up: what the versions add up to, and how the rule could work. No data files, just the page. |
+| `idea.html` | The write-up: what the versions add up to, and how the rule could work, with five real fence lines drawn before and after. |
+| `figures.html`, `save_figures.py`, `figs/` | The pictures in the write-up. `figures.html` draws them from the data and the model; `python3 save_figures.py` saves them into `figs/` (needs Chrome). `figures.html?try=12,34` draws any other fence lines by their place in `fences.js`. |
 | `indexv1.html` | v1, the ground-only map. Opens straight from disk, no build step or server. |
 | `indexv2.html` | v2, the same map with buildings as obstacles. |
 | `indexv3.html` | v3, the fence test. Runs the model again in the browser when you pick a fence. |
@@ -225,9 +226,10 @@ From the rule test in v6:
   know. At 310 a solid fence passes both tests.
 - "Most fences would change nothing" was about the route. 100 of the 735 fences that leave
   the route alone would still fail on ponding.
-- Every pond that crosses a boundary would fill with 85 mm or less of rain running off
-  the land above it, and half of them with under 3 mm. So the ponding is not a
-  once-in-a-century case.
+- Most of the ponding would not take a rare storm. Of the 173 ponds that cross a boundary,
+  half fill with under 3 mm of rain running off the land that drains into them, and 156
+  (nine in ten) with 25 mm or less. Six need more than 100 mm. `rules.js` gives the figure
+  for each fence as `fill`.
 - From the air, 64 of the 260 look like a fence, 105 like a hedge or trees, 59 have gaps
   and 27 are mostly open. 53 are on a street front and 207 between neighbours.
 
