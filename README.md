@@ -7,6 +7,7 @@ fences change where overland flood water goes, and Auckland Council has no data 
 
 | Version | What it adds | Link |
 | --- | --- | --- |
+| v5 | Fences worth checking: the same results as one plain list, with a simpler way to pick a fence | https://sponno.github.io/overland-flow/indexv5.html |
 | v4 | Is anything standing there: the LiDAR point cloud read along each boundary | https://sponno.github.io/overland-flow/indexv4.html |
 | v3 | Which fences matter: a fence tried on every boundary a flow path crosses | https://sponno.github.io/overland-flow/indexv3.html |
 | v2 | Buildings as obstacles | https://sponno.github.io/overland-flow/indexv2.html |
@@ -44,6 +45,13 @@ high on it, how high, and how level the top is. Pick a boundary to see a side vi
 every laser point on it. The same numbering as v3, so `indexv4.html#3` is the same
 boundary.
 
+v5 adds no new analysis. It is v3 and v4 rebuilt so someone new can read it: one list of
+the 91 fence lines that matter, in plain words ("Looks like a fence, 1.6 m high. If solid,
+sends water through 4 more properties"). Pick one from the list or the map and it opens in
+place, the fence goes up on the map, and a round X beside it takes it down again. The
+colour chips filter the list and the map. Clicking the map no longer drops water (v1 to v4
+still do). Same numbering again: `indexv5.html#3`.
+
 ## Files
 
 | File | What it is |
@@ -53,6 +61,7 @@ boundary.
 | `indexv2.html` | v2, the same map with buildings as obstacles. |
 | `indexv3.html` | v3, the fence test. Runs the model again in the browser when you pick a fence. |
 | `indexv4.html` | v4, v3 plus what the LiDAR point cloud shows along each boundary. |
+| `indexv5.html` | v5, the same data as v4 as a plain-language list. Start here. |
 | `thumbs/` | Screenshots for the version list. |
 | `flow.js` | The model: fill hollows, send each cell to its steepest downhill neighbour (D8), count what drains through each cell. |
 | `fetch_data.py` | Pulls the terrain, building outlines and Council's flow paths for any point and writes `data.js`. |
