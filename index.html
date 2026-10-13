@@ -29,6 +29,15 @@
   dd { margin: 0; }
   .open { font-size: 15px; font-weight: 600; color: var(--water); }
 
+  .idea {
+    display: block; background: var(--ink); color: #fff; border-radius: 14px; padding: 18px 20px; margin-bottom: 28px;
+    text-decoration: none; transition: background 0.15s;
+  }
+  .idea:hover { background: #22344a; }
+  .idea .num { color: #8fc0ff; }
+  .idea strong { display: block; font-size: 21px; line-height: 1.25; letter-spacing: -0.01em; margin: 2px 0 6px; }
+  .idea span.what { color: #c9d4e0; font-size: 15px; }
+
   footer { margin-top: 32px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
   footer p { margin: 0 0 6px; }
   footer a { color: inherit; }
@@ -44,6 +53,12 @@
 <main>
   <h1>Overland flow</h1>
   <p class="lede">Where does rain go when the drains are full, and what gets in its way? Each version adds one piece, on real Auckland data around Vermont St, Ponsonby.</p>
+
+  <a class="idea" href="idea.html">
+    <span class="num">The idea</span>
+    <strong>An active map, not a blanket rule →</strong>
+    <span class="what">What the six versions add up to. Auckland’s rule for fences across a flood path is the right test, but nobody can run it. A map that runs it on every fence line can.</span>
+  </a>
 
   <a class="version" href="indexv6.html">
     <img src="thumbs/v6.jpg" alt="Map of a row of fence lines crossing a flow path, one of them up with water standing behind it in blue, beside a list headed Needs consent 260">

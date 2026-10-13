@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>An active map, not a blanket rule</title>
+<style>
+  :root {
+    --ink: #14202e; --muted: #5b6b7c; --line: #e3e8ee; --soft: #f1f4f7; --water: #1466e0;
+    --fail: #d72828; --pass: #2f9e44; --decide: #f5aa00; --none: #9aa5b1;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; color: var(--ink); background: #f3f5f8; }
+  main { max-width: 760px; margin: 0 auto; padding: 48px 20px 72px; }
+  .kicker { font-size: 12px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--water); margin: 0 0 8px; }
+  h1 { font-size: 38px; line-height: 1.1; letter-spacing: -0.02em; margin: 0 0 16px; text-wrap: balance; }
+  .lede { font-size: 20px; line-height: 1.5; color: #33455a; margin: 0 0 8px; }
+  h2 { font-size: 24px; line-height: 1.2; letter-spacing: -0.01em; margin: 48px 0 12px; text-wrap: balance; }
+  p { margin: 0 0 14px; }
+  b, strong { font-weight: 650; }
+  a { color: var(--water); }
+  ul, ol { margin: 0 0 14px; padding-left: 22px; }
+  li { margin-bottom: 8px; }
+  ol.rule { padding-left: 0; list-style: none; counter-reset: step; }
+  ol.rule li { counter-increment: step; position: relative; padding-left: 44px; margin-bottom: 16px; }
+  ol.rule li::before {
+    content: counter(step); position: absolute; left: 0; top: 1px; width: 28px; height: 28px; border-radius: 50%;
+    display: grid; place-items: center; background: var(--ink); color: #fff; font: 700 14px/1 -apple-system, sans-serif;
+  }
+
+  .card { background: #fff; border-radius: 14px; padding: 20px 22px; margin: 20px 0; box-shadow: 0 1px 2px rgba(20, 32, 46, 0.06), 0 0 0 1px rgba(20, 32, 46, 0.06); }
+  .card h3 { font-size: 15px; font-weight: 650; margin: 0 0 12px; }
+  .card .note { font-size: 14px; color: var(--muted); margin: 12px 0 0; }
+
+  /* One bar split three ways: what a solid fence would do on the 721 fence lines the rule covers. */
+  .split { display: flex; height: 40px; border-radius: 8px; overflow: hidden; gap: 2px; }
+  .split div { display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 15px; }
+  .split .pass { background: var(--pass); }
+  .split .decide { background: var(--decide); color: var(--ink); }
+  .split .fail { background: var(--fail); }
+  .splitkey { display: flex; gap: 2px; margin-top: 8px; font-size: 14px; line-height: 1.35; color: var(--muted); }
+  .splitkey div { padding-right: 10px; }
+  .splitkey b { display: block; color: var(--ink); }
+
+  /* Five bars that come out about the same height, which is the point. */
+  .bands { display: grid; grid-template-columns: max-content 1fr max-content; gap: 8px 12px; align-items: center; font-size: 15px; }
+  .bands .bar { height: 18px; border-radius: 4px; background: var(--fail); }
+  .bands .out { background: var(--none); }
+  .bands .pct { font-weight: 650; font-variant-numeric: tabular-nums; }
+  .bands small { color: var(--muted); }
+
+  .statuses { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 20px 0; }
+  .status { background: #fff; border-radius: 14px; padding: 16px; border-top: 5px solid; box-shadow: 0 1px 2px rgba(20, 32, 46, 0.06), 0 0 0 1px rgba(20, 32, 46, 0.06); font-size: 15px; line-height: 1.45; }
+  .status h3 { font-size: 18px; margin: 0 0 2px; }
+  .status .n { font-size: 13px; color: var(--muted); margin: 0 0 8px; }
+  .status p { margin: 0; }
+  .status.pass { border-color: var(--pass); }
+  .status.fail { border-color: var(--fail); }
+  .status.decide { border-color: var(--decide); }
+
+  .answer { font-size: 20px; line-height: 1.45; font-weight: 600; border-left: 4px solid var(--water); padding: 4px 0 4px 18px; margin: 24px 0; }
+  .cta { display: inline-block; margin: 8px 12px 0 0; padding: 10px 16px; border-radius: 10px; background: var(--ink); color: #fff; font-weight: 600; font-size: 15px; text-decoration: none; }
+  .cta.quiet { background: #fff; color: var(--ink); box-shadow: 0 0 0 1px #c9d2dc; }
+  footer { margin-top: 48px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; line-height: 1.5; }
+  footer p { margin: 0 0 6px; }
+  footer a { color: inherit; }
+
+  @media (max-width: 640px) {
+    body { font-size: 16px; }
+    main { padding: 28px 16px 56px; }
+    h1 { font-size: 30px; }
+    .lede { font-size: 18px; }
+    h2 { font-size: 21px; margin-top: 36px; }
+    .statuses { grid-template-columns: 1fr; }
+    .splitkey { font-size: 13px; }
+    .answer { font-size: 18px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <p class="kicker">Team 4 · Browny’s Hackathon · the idea</p>
+  <h1>An active map, not a blanket rule</h1>
+  <p class="lede">Auckland already has a sensible rule for fences that cross a flood path. What it doesn’t have is a way to tell which fences the rule is about. We think the answer is a map that runs the rule’s test on every fence line, and keeps running it.</p>
+
+  <h2>The rule is right. Nobody can use it.</h2>
+  <p>When the drains are full, rain runs over the ground along flow paths. The Unitary Plan lets you fence across one as long as the fence doesn’t cause “ponding beyond the boundaries of the property” and doesn’t divert where the water enters or leaves. That is the right test. It only cares about fences that hurt someone else.</p>
+  <p>The trouble is answering it. For any one fence that takes a site visit or an engineer’s report. So two blunt things stand in for the test. The rule switches on by size: any flow path with more than 4,000 m² of land draining to it, whatever the fence would do. And Council’s leaflet gives every owner on a flow path the same advice: cut the palings 150 mm clear of the ground.</p>
+
+  <h2>We ran the test on every fence line</h2>
+  <p>We took one area, 2.6 km² around Ponsonby. A flow path crosses 1,015 property boundaries there. We stood a solid 1.8 m fence on each one in turn, ran the water again and asked the Plan’s two questions. The rule covers 721 of them.</p>
+
+  <div class="card">
+    <h3>What a solid fence would do on the 721 fence lines the rule covers</h3>
+    <div class="split" role="img" aria-label="310 pass, 151 depend on whose fence it is, 260 fail">
+      <div class="pass" style="flex:310">310</div>
+      <div class="decide" style="flex:151">151</div>
+      <div class="fail" style="flex:260">260</div>
+    </div>
+    <div class="splitkey">
+      <div style="flex:310"><b>Passes both tests</b>Any fence is fine here</div>
+      <div style="flex:151"><b>Depends</b>Water stands on the uphill neighbour only</div>
+      <div style="flex:260"><b>Fails</b>Ponds on someone else, or moves the crossing</div>
+    </div>
+  </div>
+
+  <p><b>A few fences do most of the harm.</b> Of the 260 that fail, 80 would affect one property. 40 would affect five or more, one of them 19. Those 40 fences account for 40% of all the properties affected.</p>
+
+  <p><b>The size of the flow path doesn’t tell you which.</b> About a third of fence lines fail whether a little land drains to them or a lot.</p>
+
+  <div class="card">
+    <h3>Share of fence lines where a solid fence would fail, by how much land drains to it</h3>
+    <div class="bands">
+      <span>2,000 to 4,000 m² <small>(outside the rule)</small></span><div><div class="bar out" style="width:66%"></div></div><span class="pct">33%</span>
+      <span>4,000 m² to 1 ha</span><div><div class="bar" style="width:62%"></div></div><span class="pct">31%</span>
+      <span>1 to 3 ha</span><div><div class="bar" style="width:78%"></div></div><span class="pct">39%</span>
+      <span>3 to 10 ha</span><div><div class="bar" style="width:72%"></div></div><span class="pct">36%</span>
+      <span>Over 10 ha</span><div><div class="bar" style="width:82%"></div></div><span class="pct">41%</span>
+    </div>
+    <p class="note">A fence on a 65 ha flow path passes. One on a 0.46 ha path affects five properties. What decides it is the ground around the fence: whether the water has somewhere else to go.</p>
+  </div>
+
+  <p><b>So the blunt versions miss both ways.</b> 201 of the 310 fence lines that pass already have a fence or hedge all along them. The leaflet would have those owners cut them open for nothing. And 98 fence lines under the 4,000 m² line fail the same tests, where the rule doesn’t reach.</p>
+
+  <h2>The idea</h2>
+  <p>Give every fence line a status, worked out by the model rather than by a visit, and put it on the flow path map Council already keeps.</p>
+
+  <div class="statuses">
+    <div class="status pass"><h3>Any fence</h3><p class="n">310 of 721</p><p>A solid fence here passes both tests. Nothing to do, nobody to visit.</p></div>
+    <div class="status fail"><h3>Keep it open</h3><p class="n">260 of 721</p><p>A solid fence here would pond water on a neighbour or move where it crosses a boundary. Open at the base, or get consent.</p></div>
+    <div class="status decide"><h3>To decide</h3><p class="n">151 of 721</p><p>Water would stand on the uphill neighbour only. Council decides once, for all of them, whether that counts.</p></div>
+  </div>
+
+  <p>Each fence line also carries what the status is based on: the properties either side, the properties a solid fence would affect, how much land drains to it, how deep the water would stand, and what is there now as far as anyone knows. For example: “looks like a fence, 1.7 m high, from the 2024 laser survey. Checked on site: not yet.”</p>
+
+  <p>Active means it keeps itself current.</p>
+  <ul>
+    <li><b>It re-runs when the ground changes.</b> A new laser survey, a new building, a subdivision.</li>
+    <li><b>It remembers what people find.</b> A visit or a photo that settles a fence, solid or open at the base, is recorded against that fence line.</li>
+    <li><b>It tests against what is really there.</b> A fence confirmed solid goes into the model as a wall, so every fence line downstream is tested again with it standing. Today’s flow path map is bare ground: no buildings, no fences.</li>
+  </ul>
+
+  <h2>How the rule should work</h2>
+  <ol class="rule">
+    <li><b>Keep the test.</b> No ponding on someone else’s land, no moving where the water crosses a boundary. It is the right one.</li>
+    <li><b>Let the map say where it applies, not a catchment size.</b> The rule bites on fence lines marked “keep it open”. The 4,000 m² line goes. Run that way over all 1,015 fence lines here, 450 could have any fence, 358 need to stay open and 207 are to decide.</li>
+    <li><b>Attach the requirement to the fence line, not to whoever built the fence.</b> Three in four fence lines here are shared between neighbours, and the Plan’s wording can’t say whose “property” a shared fence belongs to. A status on the boundary doesn’t need to.</li>
+    <li><b>Match the fix to the water.</b> The same 150 mm gap is asked of a fence with 0.4 ha draining to it and one with 167 ha. The map knows the difference.</li>
+    <li><b>Make the map the default and let evidence overturn it.</b> The Plan already works this way for flow paths. Its map is “indicative only”, an owner can bring a site report to correct it, and Council “will continually update” it. This adds one layer to that map.</li>
+  </ol>
+
+  <p class="answer">So it isn’t a map instead of a rule. It is the same rule, pointed at a map that can answer it.</p>
+
+  <h2>Who uses it</h2>
+  <ul>
+    <li><b>Someone building a fence</b> looks up the address and gets an answer before the posts go in.</li>
+    <li><b>Council</b> visits 64 fence lines first, the ones that would fail and already look like a fence from the air, instead of 721.</li>
+    <li><b>After a storm</b>, staff know which fences to look at and which neighbours to ask.</li>
+  </ul>
+
+  <h2>What it takes</h2>
+  <p>Everything here ran on open data and a laptop: LINZ’s 1 m ground model, its laser point cloud, building outlines and property boundaries, and Council’s own flow paths. The tests are one model run per fence line, about ten minutes for this area. The cost grows with computers, not with site visits.</p>
+
+  <h2>What we haven’t shown</h2>
+  <ul>
+    <li><b>Whether a fence is solid.</b> The laser can’t see a gap under the palings. That is the one fact a photo or a visit has to supply, and the map says which fences to get it for.</li>
+    <li><b>How much water.</b> The model knows where water goes and how deep it stands before it finds a way out, not how fast it arrives. Every pond that crosses a boundary would fill with 85 mm of runoff or less, and half with under 3 mm.</li>
+    <li><b>Fences together.</b> We test one at a time. A row of solid fences down one gully is worse than any one of them.</li>
+    <li><b>The cut-offs.</b> We call it ponding at 10 cm deep over 5 m² of a property, and a moved crossing at more than 5 m. The Plan gives no numbers. Council would set them.</li>
+    <li><b>Anything on the ground.</b> One area, nothing checked on site. The rule’s wording is from Council’s 2020 practice note, not the Plan itself, and none of this is a legal opinion. Some of the biggest flow paths may be streams, which the Plan handles under other rules.</li>
+  </ul>
+
+  <p><a class="cta" href="indexv6.html">See it on the map →</a><a class="cta quiet" href="index.html">How we got here, version by version</a></p>
+
+  <footer>
+    <p>Team 4, Browny’s Hackathon, 16 October 2026. Code, data and method: <a href="https://github.com/sponno/overland-flow">github.com/sponno/overland-flow</a>. Numbers are from the run of 14 October 2026.</p>
+    <p>The rule: Auckland Unitary Plan E36.4.1 (A39) with standard E36.6.1.10(1), and E36.4.1 (A41), as set out in Council’s <a href="https://www.aucklanddesignmanual.co.nz/content/dam/adm/adm-website/aup-hub/unitary-plan-practice-and-guidance-notes/RC_3.2.18_E36_Overland_Flow_Paths.pdf">practice note RC 3.2.18</a>. The advice: Council’s leaflet <a href="https://www.aucklandcouncil.govt.nz/content/dam/ac/docs/environment/OLFP-fences.pdf">Addressing fences that block overland flow paths</a>.</p>
+  </footer>
+</main>
+</body>
+</html>

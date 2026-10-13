@@ -18,6 +18,27 @@ Each new piece gets its own numbered page, so the earlier ones stay as they were
 list shows how the work built up. To add one: copy the latest `indexvN.html` to the next
 number, add a card to `index.html`, and add a row here.
 
+## The idea
+
+**An active map, not a blanket rule.** Written up at
+https://sponno.github.io/overland-flow/idea.html (`idea.html`).
+
+Auckland's rule for a fence across a flood path is the right test: no ponding on someone
+else's land, no moving where the water crosses a boundary. But answering it for any one
+fence takes a site visit, so two blunt things stand in for it: the rule switches on at
+4,000 m² of catchment, and every owner on a flow path gets the same advice.
+
+We ran the test on every fence line in one area instead. Of the 721 the rule covers, a
+solid fence passes on 310, fails on 260 and depends on whose fence it is on 151. Catchment
+size does not predict which: about a third fail in every size band. 40 fences account for
+40% of the properties affected.
+
+So: give every fence line a status (any fence, keep it open, to decide), tie it to the
+properties either side, put it on the flow path map Council already keeps, and re-run it
+when the ground or the facts change. The same rule, pointed at a map that can answer it.
+
+## What is here
+
 This repo is our shared starting point: a small overland flow model that runs in the
 browser on real Auckland data, plus the script that fetches that data.
 
@@ -71,6 +92,7 @@ are new: each fence says which boundary it was in v3 to v5.
 | File | What it is |
 | --- | --- |
 | `index.html` | The list of versions. |
+| `idea.html` | The write-up: what the versions add up to, and how the rule could work. No data files, just the page. |
 | `indexv1.html` | v1, the ground-only map. Opens straight from disk, no build step or server. |
 | `indexv2.html` | v2, the same map with buildings as obstacles. |
 | `indexv3.html` | v3, the fence test. Runs the model again in the browser when you pick a fence. |
