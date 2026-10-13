@@ -1,0 +1,9 @@
+# Raw LiDAR and whole terrain tiles are too big for git: fetch them with a script.
+*.laz
+*.las
+*.tif
+*.tiff
+
+.DS_Store
+__pycache__/
+.venv/
