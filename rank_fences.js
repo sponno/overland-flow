@@ -52,7 +52,12 @@ function findFences() {
     const a = parcelAt[i], b = parcelAt[r];
     if (a === b || (isPublic(a) && isPublic(b))) continue;
     let f = fences.get(key(a, b));
-    if (!f) fences.set(key(a, b), f = { side: fenceSide(a, b), street: isPublic(a) || isPublic(b), area: 0, cells: [] });
+    if (!f) {
+      const side = fenceSide(a, b), other = side === a ? b : a;
+      // LINZ parcel ids either side, the one the fence stands in first.
+      const between = [side, other].map((p) => p ? P.parcels[p - 1].id : null);
+      fences.set(key(a, b), f = { side, between, street: isPublic(a) || isPublic(b), area: 0, cells: [] });
+    }
     f.area = Math.max(f.area, base.acc[i]);
   }
   for (let y = 0; y < H; y++) {
@@ -155,7 +160,7 @@ async function main() {
     fences: results.map((f) => ({
       grade: grade(f), street: f.street ? 1 : 0, area: Math.round(f.area),
       newRun: f.newRun, lostRun: f.lostRun, newParcels: f.newParcels, newBuildings: f.newBuildings,
-      depth: f.depth, volume: f.volume, over: f.over ? 1 : 0,
+      depth: f.depth, volume: f.volume, over: f.over ? 1 : 0, between: f.between,
       // Cells in grid order, each stored as the step from the one before.
       cells: f.cells.map((c, k) => k ? c - f.cells[k - 1] : c),
     })),

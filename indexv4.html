@@ -1,0 +1,808 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Is anything standing there? v4, LiDAR</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --ink: #14202e;
+    --muted: #5b6b7c;
+    --line: #e3e8ee;
+    --water: #1466e0;
+    --drop: #ff7a1a;
+    --council: #c2188b;
+    --none: #7c8796;
+    --moves: #f5aa00;
+    --new: #d72828;
+    --route: #e11d74;
+    --level: #d72828;
+    --ragged: #2f9e44;
+    --part: #f5aa00;
+    --open: #ffffff;
+    --panel: rgba(255, 255, 255, 0.94);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; color: var(--ink); background: #dfe6ec; }
+  #map { position: fixed; inset: 0; background: #dfe6ec; cursor: crosshair; }
+  #rain { position: absolute; inset: 0; z-index: 450; pointer-events: none; }
+
+  #panel {
+    position: fixed; top: 16px; left: 16px; width: 320px; max-height: calc(100vh - 32px); overflow: auto;
+    background: var(--panel); backdrop-filter: blur(10px); border-radius: 14px; padding: 18px 18px 14px;
+    box-shadow: 0 8px 30px rgba(20, 32, 46, 0.18), 0 0 0 1px rgba(20, 32, 46, 0.06); z-index: 1000;
+  }
+  h1 { font-size: 20px; line-height: 1.2; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { margin: 0 0 12px; color: var(--muted); }
+
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 0 0 14px; }
+  .stats div { background: #f1f4f7; border-radius: 9px; padding: 7px 8px 8px; font-size: 12px; line-height: 1.3; color: var(--muted); }
+  .stats b { display: block; font-size: 20px; line-height: 1.2; font-weight: 650; letter-spacing: -0.01em; color: var(--ink); }
+
+  #result { border-left: 3px solid var(--ink); padding: 2px 0 2px 12px; margin: 0 0 14px; min-height: 96px; }
+  #result.drop { border-color: var(--drop); }
+  #result .from { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  #result .big { font-size: 20px; line-height: 1.25; font-weight: 650; letter-spacing: -0.01em; margin: 2px 0 6px; }
+  #result ul { margin: 0; padding: 0; list-style: none; color: var(--ink); }
+  #result li { padding: 1px 0; }
+  #result li b { font-weight: 600; }
+  #result p { margin: 0; color: var(--muted); }
+  .key { display: flex; flex-wrap: wrap; gap: 3px 12px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+  .key span { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .key i { width: 14px; height: 4px; border-radius: 2px; flex: none; }
+
+  .actions { display: flex; gap: 8px; margin-bottom: 14px; }
+  button {
+    font: inherit; font-weight: 600; flex: 1; padding: 8px 10px; border-radius: 9px; cursor: pointer; white-space: nowrap;
+    border: 1px solid var(--line); background: #fff; color: var(--ink);
+  }
+  button:hover { border-color: #c5cfda; }
+  button:disabled { opacity: 0.45; cursor: default; }
+  button.primary { background: var(--ink); border-color: var(--ink); color: #fff; flex: 2; }
+  button[aria-pressed="true"] { background: #e8f1ff; border-color: #b9d3ff; color: #0c4fb8; }
+
+  #top ol { list-style: none; margin: 8px -8px 0; padding: 0; }
+  #top li button {
+    display: grid; grid-template-columns: 22px 1fr; gap: 9px; align-items: start; width: 100%; text-align: left;
+    white-space: normal; font-weight: 400; color: var(--ink); border: 0; background: none; padding: 6px 8px; border-radius: 9px;
+  }
+  #top li button:hover, #top li button[aria-current="true"] { background: #edf1f5; }
+  #top .n, .fence-pin b {
+    display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+    background: var(--new); color: #fff; font: 700 11px/1 -apple-system, sans-serif;
+  }
+  #top strong { font-weight: 600; }
+  #top small { display: block; font-size: 12px; color: var(--muted); }
+  .fence-pin b { border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45); cursor: pointer; }
+  #top .n.open, .fence-pin b.open { color: var(--ink); border-color: var(--ink); }
+  #top .n.open { border: 1.5px solid var(--ink); }
+  .seen { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+  .seen .from { margin-bottom: 2px; }
+  .seen b { font-weight: 600; }
+  #profile { display: block; width: 100%; margin-top: 8px; border-radius: 6px; background: #f6f8fa; }
+  .dot { width: 9px !important; height: 9px !important; border-radius: 50% !important; }
+
+  .layers { padding-top: 6px; }
+  .layers label { display: flex; align-items: center; gap: 9px; padding: 4px 0; cursor: pointer; }
+  .layers input[type=checkbox] { width: 15px; height: 15px; margin: 0; accent-color: var(--ink); }
+  .swatch { width: 18px; height: 4px; border-radius: 2px; flex: none; }
+  .slider { padding: 2px 0 8px 24px; color: var(--muted); font-size: 13px; }
+  .slider input { width: 100%; margin: 4px 0 0; accent-color: var(--water); }
+  .seg { display: flex; margin: 8px 0 4px; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; padding: 6px; font-weight: 500; color: var(--muted); }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+
+  .tag { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; margin-left: 6px; vertical-align: 3px; white-space: nowrap; }
+  .legend { padding: 0 0 6px 24px; font-size: 13px; color: var(--muted); }
+  .legend div { display: flex; align-items: center; gap: 8px; padding: 1px 0; }
+  .legend i { width: 14px; height: 4px; border-radius: 2px; flex: none; }
+  .ver { margin: 10px 0 0; font-size: 12px; }
+  .ver a { color: var(--muted); }
+
+  details { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 10px; color: var(--muted); font-size: 13px; }
+  summary { cursor: pointer; color: var(--ink); font-weight: 600; }
+  details p { margin: 8px 0 0; }
+
+  #probe {
+    position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 1000; pointer-events: none;
+    background: rgba(20, 32, 46, 0.86); color: #fff; padding: 6px 12px; border-radius: 999px; font-size: 13px;
+    font-variant-numeric: tabular-nums; white-space: nowrap; opacity: 0; transition: opacity 0.15s;
+  }
+  #probe.on { opacity: 1; }
+  #loading {
+    position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center; background: #dfe6ec;
+    font-size: 16px; color: var(--muted);
+  }
+  .leaflet-container { font: inherit; }
+  .leaflet-tooltip { font-size: 12px; }
+
+  @media (max-width: 640px) {
+    #panel { top: auto; bottom: 0; left: 0; width: 100%; max-height: 50vh; border-radius: 14px 14px 0 0; padding: 14px 16px 10px; }
+    h1 { font-size: 18px; }
+    .sub { margin-bottom: 10px; }
+    .stats { margin-bottom: 10px; }
+    .stats b { font-size: 18px; }
+    #result { min-height: 0; margin-bottom: 10px; }
+    #result .big { font-size: 18px; }
+    .actions { margin-bottom: 10px; }
+    #probe { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<aside id="panel">
+  <h1>Is anything there?<span class="tag">v4</span></h1>
+  <p class="sub">The 2024 LiDAR point cloud, read along the <span id="s-matter"></span> boundaries where a fence would matter.</p>
+
+  <div class="stats">
+    <div><b id="s-all"></b>something all along</div>
+    <div><b id="s-part"></b>along part</div>
+    <div><b id="s-open"></b>nothing standing</div>
+  </div>
+
+  <div id="result"></div>
+
+  <div class="actions">
+    <button id="btn-clear" class="primary" disabled>Take the fence down</button>
+    <button id="btn-rain" aria-pressed="true">Rain</button>
+  </div>
+
+  <details id="top" open>
+    <summary>Go and look at these first</summary>
+    <ol id="top-list"></ol>
+  </details>
+
+  <details id="layers" open>
+    <summary>Layers</summary>
+    <div class="layers">
+    <label><input type="checkbox" id="l-fences" checked><span class="swatch" style="background:var(--level)"></span>Boundaries where a fence would matter</label>
+    <div class="legend">
+      <div><i style="background:var(--level)"></i><span><b id="n-level"></b> something all along, level top</span></div>
+      <div><i style="background:var(--ragged)"></i><span><b id="n-ragged"></b> something all along, ragged top</span></div>
+      <div><i style="background:var(--part)"></i><span><b id="n-part"></b> something along part</span></div>
+      <div><i style="background:var(--open);outline:1px solid var(--ink)"></i><span><b id="n-open"></b> nothing standing</span></div>
+      <div><i style="background:var(--none)"></i><span><b id="n-rest"></b> other boundaries tested in v3</span></div>
+    </div>
+    <label><input type="checkbox" id="l-flow" checked><span class="swatch" style="background:var(--water)"></span>Flow paths</label>
+    <div class="slider">
+      <b id="thr-label"></b>
+      <input type="range" id="thr" min="0" max="6" step="1" value="3">
+    </div>
+    <label><input type="checkbox" id="l-buildings" checked><span class="swatch" style="background:#5d6675;height:10px"></span>Buildings</label>
+    <label><input type="checkbox" id="l-council"><span class="swatch" style="background:var(--council)"></span>Council's mapped flow paths</label>
+    <label><input type="checkbox" id="l-pond"><span class="swatch" style="background:#7fb0f5;height:10px"></span>Hollows that fill before they spill</label>
+    <label><input type="checkbox" id="l-shade" checked><span class="swatch" style="background:linear-gradient(90deg,#9aa5ae,#eef0ea);height:10px"></span>Terrain shading</label>
+    <div class="seg">
+      <button id="b-streets" aria-pressed="true">Streets</button>
+      <button id="b-aerial" aria-pressed="false">Aerial</button>
+    </div>
+    </div>
+  </details>
+
+  <details>
+    <summary>What this assumes</summary>
+    <p>For each boundary we take the laser points within a couple of metres and work out their height above the ground. A fence is a thin sheet, so we slide and tilt a 30 cm wide strip up to <span id="a-search"></span> m off the surveyed line, to wherever the most metres have something standing <span id="a-low"></span> to <span id="a-high"></span> m high in it. Metres under a building are left out.</p>
+    <p>All along means 70% of the boundary or more, part means 35% or more. A level top varies by <span id="a-level"></span> m or less from metre to metre, which is what a fence or wall looks like. A ragged top is more likely planting, or a fence with planting over it.</p>
+    <p>The laser cannot tell solid from see-through, or a paling fence from a clipped hedge. Nothing here has been checked on the ground.</p>
+    <p>How often does the test fire by chance? On the same lines shifted <span id="a-shift"></span> m sideways, where no boundary is, it finds something all along <b id="a-control"></b> of the time, against <b id="a-real"></b> on real boundaries.</p>
+    <p>Which boundaries matter comes from v3: a solid 1.8 m fence there, one at a time with every other boundary open, would put a flow path through a property that had none. <a href="indexv3.html">v3</a> has the detail and the limits of that test.</p>
+    <p id="sources"></p>
+  </details>
+  <p class="ver"><a href="index.html">All versions</a> · <a href="indexv3.html">Previous: v3, which fences matter</a></p>
+</aside>
+
+<div id="probe"></div>
+<div id="loading">Working out where the water goes…</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="data.js"></script>
+<script src="fences.js"></script>
+<script src="lidar.js"></script>
+<script src="flow.js"></script>
+<script>
+setTimeout(init, 30);
+
+function init() {
+  const D = FLOW_DATA, F = FENCE_DATA, LIDAR = LIDAR_DATA, W = D.width, H = D.height, N = W * H;
+  const [south, west, north, east] = D.bounds;
+  const bounds = L.latLngBounds([south, west], [north, east]);
+  const MIN_AREA = F.minArea; // m², the smallest catchment Council maps
+  const TOP = 10;
+
+  const z = Flow.decode(D);
+  const buildingAt = Flow.decodeBuildings(D); // building number per cell, 0 = open ground
+  const buildingCount = D.buildings.linz_ids.length;
+  const walls = new Float32Array(N);
+  const skip = new Uint8Array(N); // buildings, and the fence that is up
+  for (let i = 0; i < N; i++) if (buildingAt[i]) { walls[i] = F.buildingHeight; skip[i] = 1; }
+
+  // The run without any fence (v2), and the run on screen: the same, or with one fence up.
+  const base = Flow.compute(z, W, H, walls);
+  let model = base, diff = null, chosen = -1;
+  let { receiver, slope, acc, pond } = model;
+
+  // Fences come ranked, most significant first. Cells are stored as steps.
+  const fences = F.fences.map((f, k) => {
+    let c = 0;
+    return { ...f, rank: k + 1, cells: f.cells.map((step) => (c += step)), seen: LIDAR.fences[k] };
+  });
+  // The ones where a fence would matter (grade 2 in v3) are what this version is about.
+  const matters = fences.filter((f) => f.grade === 2);
+  // What the laser saw, in the order worth a visit. "none" means we had no line to scan.
+  const SEEN = {
+    level: { colour: '--level', says: 'Something stands all along it, with a level top' },
+    ragged: { colour: '--ragged', says: 'Something stands all along it, with a ragged top' },
+    part: { colour: '--part', says: 'Something stands along part of it' },
+    open: { colour: '--open', says: 'Nothing is standing on it' },
+    hidden: { colour: '--none', says: 'Hidden from the laser' },
+    building: { colour: '--none', says: 'A building stands on it' },
+    none: { colour: '--none', says: 'Not scanned' },
+  };
+  const fenceAt = new Int32Array(N).fill(-1);
+  for (let k = fences.length - 1; k >= 0; k--) for (const c of fences[k].cells) fenceAt[c] = k;
+
+  // Buildings the water is pushed into with no way round: the path is drawn across those.
+  function forcedInto(m) {
+    const forced = new Uint8Array(buildingCount + 1);
+    for (let i = 0; i < N; i++) {
+      const r = m.receiver[i];
+      if (!buildingAt[i] && r >= 0 && buildingAt[r] && m.acc[i] >= MIN_AREA) forced[buildingAt[r]] = 1;
+    }
+    return forced;
+  }
+  let forced = forcedInto(model);
+
+  // The grid is axis-aligned in Web Mercator, so cell <-> lat/lng is linear there.
+  const M = L.CRS.EPSG3857;
+  const nw = M.project(bounds.getNorthWest()), se = M.project(bounds.getSouthEast());
+  const cellOf = (latlng) => {
+    const p = M.project(latlng);
+    const x = Math.floor((p.x - nw.x) / (se.x - nw.x) * W);
+    const y = Math.floor((nw.y - p.y) / (nw.y - se.y) * H);
+    return x < 0 || y < 0 || x >= W || y >= H ? -1 : y * W + x;
+  };
+  const pointOf = (x, y) => M.unproject(L.point(nw.x + x / W * (se.x - nw.x), nw.y - y / H * (nw.y - se.y)));
+  const latLngOf = (i) => pointOf((i % W) + 0.5, Math.floor(i / W) + 0.5);
+  const extentOf = (cells) => {
+    let x0 = W, y0 = H, x1 = 0, y1 = 0;
+    for (const i of cells) {
+      const x = i % W, y = Math.floor(i / W);
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+    }
+    return L.latLngBounds(pointOf(x0, y1 + 1), pointOf(x1 + 1, y0));
+  };
+
+  const fmtLen = (m) => m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
+  const fmtArea = (m2) => m2 < 10000 ? `${Math.round(m2).toLocaleString()} m²`
+    : `${(m2 / 1e4).toFixed(m2 < 1e6 ? 1 : 0)} ha`;
+  const count = (n, one, many) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+
+  // ---- map -----------------------------------------------------------------
+  const wide = window.matchMedia('(min-width: 641px)').matches;
+  const panel = document.getElementById('panel');
+  // A phone shows the whole area on a tall, narrow screen, so it needs more room to roam.
+  const map = L.map('map', { zoomControl: false, minZoom: 14, maxZoom: 21, maxBounds: bounds.pad(wide ? 0.5 : 1.5) });
+  L.control.zoom({ position: wide ? 'bottomright' : 'topleft' }).addTo(map);
+  if (!wide) {
+    // The panel is a bottom sheet on phones: keep the credits visible and the sheet short.
+    map.attributionControl.setPosition('topright');
+    document.getElementById('layers').open = false;
+    document.getElementById('top').open = false;
+  }
+  const basemaps = {
+    streets: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxNativeZoom: 19, maxZoom: 21, attribution: '© OpenStreetMap contributors' }),
+    aerial: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxNativeZoom: 19, maxZoom: 21, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics' }),
+  };
+  let basemap = 'streets';
+  basemaps.streets.addTo(map);
+  // Room for the panel: beside the map on a wide screen, under it on a phone.
+  const padding = () => wide
+    ? { paddingTopLeft: [352, 16], paddingBottomRight: [16, 16] }
+    : { paddingTopLeft: [16, 16], paddingBottomRight: [16, panel.offsetHeight + 16] };
+  map.fitBounds(bounds, padding());
+  if (map.getZoom() < 16) {
+    // On a narrower window, fill the screen rather than shrink to fit.
+    map.setView(bounds.getCenter(), wide ? 16 : 15, { animate: false });
+    map.panBy(wide ? [-168, 0] : [0, window.innerHeight / 4], { animate: false }); // the sheet fills the bottom half
+  }
+
+  for (const [name, zIndex] of [['shade', 250], ['pond', 300], ['buildings', 340], ['flow', 350], ['fences', 355], ['change', 360]]) {
+    const pane = map.createPane(name);
+    pane.style.zIndex = zIndex;
+    pane.style.pointerEvents = 'none';
+  }
+  map.getPane('shade').style.mixBlendMode = 'multiply';
+
+  // An image overlay backed by a canvas we can redraw in place.
+  const CanvasOverlay = L.ImageOverlay.extend({
+    _initImage() {
+      const c = this._image = this._url;
+      c.classList.add('leaflet-image-layer');
+      if (this._zoomAnimated) c.classList.add('leaflet-zoom-animated');
+    },
+  });
+  const gridCanvas = () => Object.assign(document.createElement('canvas'), { width: W, height: H });
+  const overlay = (canvas, pane, opacity) => new CanvasOverlay(canvas, bounds, { pane, opacity, interactive: false });
+  // Paint a list of cells as squares `w` cells wide.
+  const paint = (ctx, cells, colour, w) => {
+    ctx.fillStyle = colour;
+    const off = (w - 1) / 2;
+    for (const i of cells) ctx.fillRect((i % W) - off, Math.floor(i / W) - off, w, w);
+  };
+
+  // ---- terrain shading -----------------------------------------------------
+  const shadeCanvas = gridCanvas();
+  (function renderShade() {
+    const ctx = shadeCanvas.getContext('2d'), img = ctx.createImageData(W, H), px = img.data;
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < N; i++) { if (z[i] < lo) lo = z[i]; if (z[i] > hi) hi = z[i]; }
+    const exaggerate = 2, alt = Math.PI / 4;
+    const lx = -Math.SQRT1_2 * Math.cos(alt), ly = Math.SQRT1_2 * Math.cos(alt), lz = Math.sin(alt); // sun in the north-west
+    const LOW = [176, 220, 224], MID = [247, 247, 240], HIGH = [240, 220, 186];
+    for (let y = 0; y < H; y++) {
+      const yu = y > 0 ? y - 1 : y, yd = y < H - 1 ? y + 1 : y;
+      for (let x = 0; x < W; x++) {
+        const xl = x > 0 ? x - 1 : x, xr = x < W - 1 ? x + 1 : x;
+        const dzdx = (z[y * W + xr] - z[y * W + xl]) / (xr - xl) * exaggerate;
+        const dzdy = (z[yu * W + x] - z[yd * W + x]) / (yd - yu) * exaggerate;
+        let s = (-dzdx * lx - dzdy * ly + lz) / Math.sqrt(dzdx * dzdx + dzdy * dzdy + 1) / lz;
+        s = Math.max(0.55, Math.min(1, s));
+        const t = (z[y * W + x] - lo) / (hi - lo);
+        const [a, b, f] = t < 0.5 ? [LOW, MID, t * 2] : [MID, HIGH, t * 2 - 1];
+        const o = (y * W + x) * 4;
+        px[o] = (a[0] + (b[0] - a[0]) * f) * s;
+        px[o + 1] = (a[1] + (b[1] - a[1]) * f) * s;
+        px[o + 2] = (a[2] + (b[2] - a[2]) * f) * s;
+        px[o + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+  })();
+  const shadeLayer = overlay(shadeCanvas, 'shade', 0.75).addTo(map);
+
+  // ---- hollows -------------------------------------------------------------
+  const pondCanvas = gridCanvas();
+  function renderPond() {
+    const ctx = pondCanvas.getContext('2d'), img = ctx.createImageData(W, H), px = img.data;
+    for (let i = 0; i < N; i++) {
+      if (pond[i] < 0.05) continue;
+      const o = i * 4;
+      px[o] = 40; px[o + 1] = 120; px[o + 2] = 235;
+      px[o + 3] = 70 + Math.min(1, pond[i] / 1.5) * 150;
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+  renderPond();
+  const pondLayer = overlay(pondCanvas, 'pond', 0.85);
+
+  // ---- buildings -----------------------------------------------------------
+  const buildingCanvas = gridCanvas();
+  (function renderBuildings() {
+    const ctx = buildingCanvas.getContext('2d'), img = ctx.createImageData(W, H), px = img.data;
+    for (let i = 0; i < N; i++) if (buildingAt[i]) px.set([93, 102, 117, 130], i * 4);
+    ctx.putImageData(img, 0, 0);
+  })();
+  const buildingLayer = overlay(buildingCanvas, 'buildings', 0.9).addTo(map);
+
+  // ---- flow paths ----------------------------------------------------------
+  const THRESHOLDS = [200, 500, 1000, 2000, 5000, 10000, 50000];
+  const PALETTES = {
+    streets: ['#74b6ff', '#4a9af6', '#2a7ce6', '#1560cc', '#0b46a6', '#062f7c'],
+    aerial: ['#c4efff', '#9fe4ff', '#78d7ff', '#52caff', '#2cbcff', '#06adff'],
+  };
+  const flowCanvas = gridCanvas();
+  function renderFlow() {
+    const thr = THRESHOLDS[+thrInput.value];
+    const ctx = flowCanvas.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+    const buckets = [[], [], [], [], [], []];
+    for (let i = 0; i < N; i++) {
+      if (acc[i] < thr) continue;
+      if (buildingAt[i] && !forced[buildingAt[i]]) continue; // a big roof's own runoff
+      buckets[Math.min(5, Math.floor(Math.log10(acc[i] / thr) * 2))].push(i);
+    }
+    buckets.forEach((cells, b) => paint(ctx, cells, PALETTES[basemap][b], 1.6 + b * 0.9));
+    document.getElementById('thr-label').textContent =
+      `Draining ${fmtArea(thr)}+` + (thr === MIN_AREA ? ' · Council’s cut-off' : '');
+  }
+  const thrInput = document.getElementById('thr');
+  renderFlow();
+  const flowLayer = overlay(flowCanvas, 'flow', 0.92).addTo(map);
+  thrInput.addEventListener('input', renderFlow);
+
+  // ---- Council's mapped paths ----------------------------------------------
+  const GROUPS = { 1: '2,000 m² to 4,000 m²', 2: '4,000 m² to 1 ha', 3: '1 ha to 3 ha', 4: '3 ha to 100 ha', 5: '100 ha and above' };
+  const councilLayer = L.layerGroup(D.olfp.map((f) =>
+    L.polyline(f.c.map(([lon, lat]) => [lat, lon]), {
+      color: '#c2188b', weight: 1 + f.g * 0.8, opacity: 0.9, dashArray: '6 5',
+    }).bindTooltip(`Council flow path · catchment ${GROUPS[f.g] || 'unknown'}`, { sticky: true })));
+
+  // ---- fences --------------------------------------------------------------
+  const css = getComputedStyle(document.documentElement);
+  const colourOf = (f) => css.getPropertyValue(SEEN[f.seen.verdict].colour).trim();
+  const NONE = css.getPropertyValue('--none').trim(), INK = css.getPropertyValue('--ink').trim();
+  const fenceCanvas = gridCanvas();
+  (function renderFences() {
+    const ctx = fenceCanvas.getContext('2d');
+    for (const f of fences) if (f.grade < 2) paint(ctx, f.cells, NONE, 1.4);
+    for (const f of matters) {
+      if (f.seen.verdict === 'open') paint(ctx, f.cells, INK, 4.2); // a dark edge so white shows on a pale map
+      paint(ctx, f.cells, colourOf(f), 3.4);
+    }
+  })();
+  // Each one that matters gets a dot, numbered for the ones to look at first.
+  const first = matters.filter((f) => f.seen.verdict === 'level').slice(0, TOP);
+  const pins = matters.map((f) => {
+    const centre = f.cells.reduce((s, i) => [s[0] + (i % W) + 0.5, s[1] + Math.floor(i / W) + 0.5], [0, 0]);
+    const at = pointOf(centre[0] / f.cells.length, centre[1] / f.cells.length);
+    const open = f.seen.verdict === 'open';
+    const pin = first.includes(f)
+      ? L.marker(at, { icon: L.divIcon({ className: 'fence-pin', html: `<b style="background:${colourOf(f)}">${f.rank}</b>`, iconSize: [22, 22] }), bubblingMouseEvents: false, zIndexOffset: 1000 - f.rank })
+      : L.circleMarker(at, { radius: 5, color: open ? INK : '#fff', weight: 1.5, fillColor: colourOf(f), fillOpacity: 1, bubblingMouseEvents: false });
+    return pin.on('click', () => choose(f.rank - 1)).bindTooltip(`${SEEN[f.seen.verdict].says} · ${headline(f).toLowerCase()}`, { direction: 'top', offset: [0, -8] });
+  });
+  const fenceLayer = L.layerGroup([overlay(fenceCanvas, 'fences', 1), ...pins]).addTo(map);
+
+  function headline(f) {
+    if (f.grade === 2) return `Puts ${count(f.newParcels, 'more property', 'more properties')} on a flow path`;
+    if (f.grade === 1) return `Makes ${fmtLen(f.newRun)} of new flow path`;
+    return f.over ? 'Water goes over the top' : 'Water goes round it';
+  }
+
+  // What the chosen fence changed: water backing up, the new route, the old route, the fence.
+  const changeCanvas = gridCanvas();
+  const ROUTE = css.getPropertyValue('--route').trim(), DRY = '#4b5563', FENCE = '#0d1520';
+  function renderChange() {
+    const ctx = changeCanvas.getContext('2d'), img = ctx.createImageData(W, H), px = img.data;
+    if (chosen >= 0) {
+      for (let i = 0; i < N; i++) {
+        const rise = skip[i] ? 0 : model.filled[i] - base.filled[i];
+        if (rise < 0.05) continue;
+        const o = i * 4;
+        px[o] = 30; px[o + 1] = 110; px[o + 2] = 240;
+        px[o + 3] = 110 + Math.min(1, rise) * 110;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    if (chosen < 0) return;
+    paint(ctx, diff.lost, DRY, 2.6);
+    paint(ctx, diff.gained, ROUTE, 3.4);
+    paint(ctx, fences[chosen].cells, FENCE, 2.6);
+  }
+  overlay(changeCanvas, 'change', 0.95).addTo(map);
+
+  const result = document.getElementById('result');
+  const clearBtn = document.getElementById('btn-clear');
+  function showFence() {
+    result.className = '';
+    if (chosen < 0) {
+      result.innerHTML = `<div class="from">No fence up</div>
+        <div class="big">Pick a boundary</div>
+        <p>From the list below, or any dot on the map, to see what the laser saw along it and what a fence there would do.</p>`;
+      return;
+    }
+    const f = fences[chosen];
+    const lines = [`Rain from <b>${fmtArea(f.area)}</b> reaches this boundary`];
+    if (f.over) lines.push(`It backs up <b>${f.depth.toFixed(1)} m</b> deep, then goes over the top`);
+    else if (f.depth >= 0.05) lines.push(`It stands <b>${f.depth.toFixed(2)} m</b> deep against the fence before it gets out`);
+    else lines.push('It turns along the fence without backing up');
+    if (f.newRun) lines.push(`<b>${fmtLen(f.newRun)}</b> of ground gets a flow path it didn’t have`);
+    if (f.newBuildings) lines.push(`<b>${count(f.newBuildings, 'building', 'buildings')}</b> get one against a wall`);
+    if (f.lostRun) lines.push(`<b>${fmtLen(f.lostRun)}</b> of the old route runs dry`);
+    result.innerHTML =
+      `<div class="from">Boundary ${f.rank} of ${fences.length.toLocaleString()} · ${f.street ? 'street frontage' : 'between neighbours'}</div>
+       <div class="big">${SEEN[f.seen.verdict].says}</div>
+       ${sawHtml(f)}
+       <div class="seen"><div class="from">If a solid fence stood here</div>
+       <ul><li><b>${headline(f)}</b></li>${lines.map((l) => `<li>${l}</li>`).join('')}</ul></div>
+       <div class="key">
+         <span><i style="background:${FENCE}"></i>boundary</span>
+         <span><i style="background:${ROUTE}"></i>new route</span>
+         <span><i style="background:${DRY}"></i>old route, now dry</span>
+         <span><i style="background:#3d83f0;height:9px"></i>water backing up</span>
+       </div>`;
+    drawProfile(f);
+  }
+
+  // What the laser saw along the boundary, in words, with room for the side view.
+  function sawHtml(f) {
+    const s = f.seen;
+    if (!s.open) return `<p>${s.verdict === 'building' ? 'The whole boundary runs under a building, which the model already treats as a wall.' : 'The two parcels share no straight run long enough to scan.'}</p>`;
+    const lines = [`Something stands on <b>${Math.round(s.along * 100)}%</b> of its ${s.open} m of open ground`];
+    if (s.top) lines.push(`Typical top <b>${s.top.toFixed(1)} m</b> above the ground, varying by <b>${s.ragged.toFixed(1)} m</b>`);
+    if (s.open < s.length) lines.push(`Another <b>${s.length - s.open} m</b> runs under a building`);
+    if (s.hidden >= 0.1) lines.push(`<b>${Math.round(s.hidden * 100)}%</b> is hidden from the laser`);
+    return `<ul>${lines.map((l) => `<li>${l}</li>`).join('')}</ul>` + (s.points ? `<canvas id="profile"></canvas>
+      <div class="key">
+        <span><i class="dot" style="background:#b08050"></i>ground</span>
+        <span><i class="dot" style="background:#2f9e44"></i>plants, as the survey sorted them</span>
+        <span><i class="dot" style="background:#d04040"></i>building</span>
+        <span><i class="dot" style="background:#14202e"></i>other</span>
+      </div>` : '');
+  }
+
+  // Side view: every laser point within 30 cm of the fitted line, as if you stood back and looked at it.
+  const POINT_COLOUR = { 2: '#b08050', 3: '#2f9e44', 4: '#2f9e44', 5: '#2f9e44', 6: '#d04040' };
+  function drawProfile(f) {
+    const canvas = document.getElementById('profile');
+    if (!canvas) return;
+    const s = f.seen, dpr = window.devicePixelRatio || 1;
+    const width = canvas.clientWidth, top = 4.5, bottom = -0.5;
+    // Heights are drawn large enough to read. A long boundary is squeezed sideways to fit.
+    const rise = 24, scale = Math.min(width / s.length, rise), height = (top - bottom) * rise;
+    canvas.style.height = height + 'px';
+    canvas.width = width * dpr; canvas.height = height * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    const x = (m) => (width - s.length * scale) / 2 + m * scale, y = (m) => (top - m) / (top - bottom) * height;
+    ctx.fillStyle = 'rgba(20, 102, 224, 0.09)'; // the heights that count
+    ctx.fillRect(0, y(LIDAR.high), width, y(LIDAR.low) - y(LIDAR.high));
+    ctx.strokeStyle = '#c9d2dc'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, y(0) + 0.5); ctx.lineTo(width, y(0) + 0.5); ctx.stroke();
+    ctx.fillStyle = '#5b6b7c'; ctx.font = '10px -apple-system, sans-serif';
+    for (const m of [1, 2, 3, 4]) ctx.fillText(`${m} m`, 3, y(m) + 3);
+    ctx.textAlign = 'right'; ctx.fillText(`${s.length} m along`, width - 3, height - 3);
+    for (const [along, up, cls] of s.points) {
+      ctx.fillStyle = POINT_COLOUR[cls] || '#14202e';
+      ctx.beginPath(); ctx.arc(x(along), y(up), 1.5, 0, 2 * Math.PI); ctx.fill();
+    }
+  }
+
+  // Put one fence up (or none, with -1) and run the water again.
+  function choose(k) {
+    if (k === chosen) return;
+    result.className = '';
+    result.innerHTML = '<div class="from">One moment</div><div class="big">Putting a fence up…</div>';
+    setTimeout(() => {
+      if (chosen >= 0) for (const c of fences[chosen].cells) { walls[c] = 0; skip[c] = 0; }
+      chosen = k;
+      if (k < 0) { model = base; diff = null; } else {
+        for (const c of fences[k].cells) { walls[c] = F.height; skip[c] = 1; }
+        model = Flow.compute(z, W, H, walls);
+        diff = Flow.changes(base, model, W, H, MIN_AREA, F.near, skip);
+      }
+      ({ receiver, slope, acc, pond } = model);
+      forced = forcedInto(model);
+      renderFlow();
+      renderPond();
+      renderChange();
+      clearDrop();
+      clearRain();
+      parts.forEach(spawn);
+      showFence();
+      clearBtn.disabled = k < 0;
+      for (const b of document.querySelectorAll('#top-list button')) b.setAttribute('aria-current', +b.dataset.fence === k);
+      history.replaceState(null, '', k < 0 ? location.pathname + location.search : `#${k + 1}`);
+      if (k >= 0) map.flyToBounds(extentOf([...fences[k].cells, ...diff.gained, ...diff.lost]).pad(0.35), { ...padding(), maxZoom: 18, duration: 0.7 });
+    }, 20);
+  }
+  clearBtn.addEventListener('click', () => choose(-1));
+
+  // The nearest fence to a click, if there is one within a few pixels of it.
+  function fenceNear(latlng) {
+    const i = cellOf(latlng);
+    if (i < 0 || !map.hasLayer(fenceLayer)) return -1;
+    const pixelsPerCell = (map.latLngToContainerPoint(bounds.getSouthEast()).x - map.latLngToContainerPoint(bounds.getNorthWest()).x) / W;
+    const reach = Math.max(1, Math.min(12, Math.round(7 / pixelsPerCell)));
+    const cx = i % W, cy = Math.floor(i / W);
+    let best = -1, bestDist = Infinity;
+    for (let y = Math.max(0, cy - reach); y <= Math.min(H - 1, cy + reach); y++) {
+      for (let x = Math.max(0, cx - reach); x <= Math.min(W - 1, cx + reach); x++) {
+        const k = fenceAt[y * W + x], d = (x - cx) ** 2 + (y - cy) ** 2;
+        if (k >= 0 && (d < bestDist || (d === bestDist && k < best))) { best = k; bestDist = d; }
+      }
+    }
+    return best;
+  }
+
+  document.getElementById('top-list').innerHTML = first.map((f) =>
+    `<li><button data-fence="${f.rank - 1}"><span class="n" style="background:${colourOf(f)}">${f.rank}</span><span><strong>${f.seen.top.toFixed(1)} m high along ${Math.round(f.seen.along * 100)}% of ${f.seen.open} m</strong>
+       <small>${headline(f)} if it is solid · rain from ${fmtArea(f.area)}</small></span></button></li>`).join('');
+  document.getElementById('top-list').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (b) choose(+b.dataset.fence);
+  });
+
+  const saw = LIDAR.byGrade[2], put = (id, text) => { document.getElementById(id).textContent = text; };
+  put('s-matter', matters.length);
+  put('s-all', saw.level + saw.ragged);
+  put('s-part', saw.part);
+  put('s-open', saw.open);
+  for (const v of ['level', 'ragged', 'part', 'open']) put('n-' + v, saw[v]);
+  put('n-rest', (fences.length - matters.length).toLocaleString());
+  // Lines with no open ground to scan are left out of both rates.
+  const rate = (c) => `${Math.round((c.level + c.ragged) / (c.level + c.ragged + c.part + c.open + c.hidden) * 100)}%`;
+  put('a-real', rate(LIDAR.counts));
+  put('a-control', rate(LIDAR.control));
+  for (const k of ['search', 'low', 'high', 'level', 'shift']) put('a-' + k, LIDAR[k]);
+
+  // ---- one drop ------------------------------------------------------------
+  const ghostLine = L.polyline([], { color: '#2b3442', weight: 2.5, opacity: 0.85, dashArray: '4 7', interactive: false }).addTo(map);
+  const dropCasing = L.polyline([], { color: '#fff', weight: 7, opacity: 0.95, interactive: false }).addTo(map);
+  const dropLine = L.polyline([], { color: '#ff7a1a', weight: 3.5, interactive: false }).addTo(map);
+  const dropHead = L.circleMarker([0, 0], { radius: 6, color: '#fff', weight: 2, fillColor: '#ff7a1a', fillOpacity: 1, interactive: false });
+  let dropAnim = 0;
+  function clearDrop() {
+    cancelAnimationFrame(dropAnim);
+    for (const line of [ghostLine, dropCasing, dropLine]) line.setLatLngs([]);
+    dropHead.remove();
+  }
+
+  function drop(start) {
+    const path = Flow.trace(receiver, start);
+    let length = 0, joinAfter = null;
+    for (let k = 1; k < path.length; k++) {
+      const a = path[k - 1], b = path[k];
+      length += (a % W !== b % W && Math.floor(a / W) !== Math.floor(b / W)) ? Math.SQRT2 : 1;
+      if (joinAfter === null && acc[b] >= MIN_AREA) joinAfter = length;
+    }
+    const end = path[path.length - 1];
+    const lines = [`Starts at <b>${z[start].toFixed(1)} m</b> and falls <b>${(z[start] - z[end]).toFixed(1)} m</b>`];
+    if (acc[start] >= MIN_AREA) lines.push(`Lands on a flow path already draining <b>${fmtArea(acc[start])}</b>`);
+    else if (joinAfter !== null) lines.push(`Joins a flow path after <b>${fmtLen(joinAfter)}</b>`);
+    else lines.push('Never joins a mapped-size flow path');
+    lines.push(`By the end it runs with rain from <b>${fmtArea(acc[end])}</b>`);
+    // Dashed line: where the same drop goes with the fence down.
+    const before = chosen < 0 ? path : Flow.trace(base.receiver, start);
+    const moved = before.length !== path.length || before.some((c, k) => c !== path[k]);
+    ghostLine.setLatLngs(moved ? before.map(latLngOf) : []);
+    if (chosen >= 0) lines.push(moved ? 'With the fence down it takes the dashed line' : 'The fence makes no difference to this drop');
+    result.className = 'drop';
+    result.innerHTML =
+      `<div class="from">From where you clicked</div>
+       <div class="big">${fmtLen(length)} ${z[end] < 0.5 ? 'to the sea' : 'to the map edge'}</div>
+       <ul>${lines.map((l) => `<li>${l}</li>`).join('')}</ul>`;
+
+    const pts = path.map(latLngOf);
+    const duration = Math.max(1200, Math.min(6000, length * 4));
+    const t0 = performance.now();
+    cancelAnimationFrame(dropAnim);
+    dropHead.addTo(map);
+    (function frame(now) {
+      const p = Math.min(1, (now - t0) / duration);
+      const k = Math.max(1, Math.round(p * (pts.length - 1)));
+      const shown = pts.slice(0, k + 1);
+      dropCasing.setLatLngs(shown);
+      dropLine.setLatLngs(shown);
+      dropHead.setLatLng(pts[Math.min(k, pts.length - 1)]);
+      if (p < 1) dropAnim = requestAnimationFrame(frame);
+    })(t0);
+  }
+
+  map.on('click', (e) => {
+    const k = fenceNear(e.latlng), i = cellOf(e.latlng);
+    if (k >= 0 && k !== chosen) choose(k);
+    else if (i >= 0) drop(i);
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') choose(-1); });
+
+  // ---- hover readout -------------------------------------------------------
+  const probe = document.getElementById('probe');
+  map.on('mousemove', (e) => {
+    const i = cellOf(e.latlng);
+    probe.classList.toggle('on', i >= 0);
+    if (i < 0) return;
+    const k = fenceNear(e.latlng);
+    probe.textContent = k >= 0 ? `Boundary ${fences[k].rank} · ${SEEN[fences[k].seen.verdict].says.toLowerCase()} · click to look`
+      : `${z[i].toFixed(1)} m · slope ${(slope[i] * 100).toFixed(0)}% · ${fmtArea(acc[i])} drains through here`;
+  });
+  map.on('mouseout', () => probe.classList.remove('on'));
+
+  // ---- rain ----------------------------------------------------------------
+  const rainCanvas = Object.assign(document.createElement('canvas'), { id: 'rain' });
+  map.getContainer().appendChild(rainCanvas);
+  const rctx = rainCanvas.getContext('2d');
+  const RAIN_COLOUR = { streets: 'rgba(16, 84, 214, 0.8)', aerial: 'rgba(190, 236, 255, 0.95)' };
+  const parts = Array.from({ length: 4000 }, () => ({ i: 0, t: 0, age: 0, life: 0, sx: NaN, sy: NaN }));
+  let raining = true, view = { x0: 0, y0: 0, x1: W, y1: H }, lastFrame = 0;
+
+  function sizeRain() {
+    const { x, y } = map.getSize(), dpr = window.devicePixelRatio || 1;
+    rainCanvas.width = x * dpr; rainCanvas.height = y * dpr;
+    rainCanvas.style.width = x + 'px'; rainCanvas.style.height = y + 'px';
+    rctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  function clearRain() {
+    rctx.clearRect(0, 0, rainCanvas.width, rainCanvas.height);
+    for (const p of parts) p.sx = NaN;
+  }
+  function spawn(p) {
+    // Mostly rain on what's in view, with some from further up the hill.
+    const v = Math.random() < 0.65 ? view : { x0: 0, y0: 0, x1: W, y1: H };
+    const x = Math.floor(v.x0 + Math.random() * (v.x1 - v.x0));
+    const y = Math.floor(v.y0 + Math.random() * (v.y1 - v.y0));
+    p.i = y * W + x; p.t = 0; p.age = 0; p.life = 5 + Math.random() * 14; p.sx = NaN;
+  }
+  parts.forEach(spawn);
+
+  function rainFrame(now) {
+    requestAnimationFrame(rainFrame);
+    const dt = Math.min(0.05, (now - lastFrame) / 1000);
+    lastFrame = now;
+    if (!raining) return;
+
+    const tl = map.latLngToContainerPoint(bounds.getNorthWest());
+    const br = map.latLngToContainerPoint(bounds.getSouthEast());
+    const kx = (br.x - tl.x) / W, ky = (br.y - tl.y) / H;
+    const size = map.getSize();
+    const clamp = (v, hi) => Math.max(0, Math.min(hi, v));
+    view = { x0: clamp(-tl.x / kx, W - 1), y0: clamp(-tl.y / ky, H - 1), x1: clamp((size.x - tl.x) / kx, W), y1: clamp((size.y - tl.y) / ky, H) };
+
+    rctx.globalCompositeOperation = 'destination-out';
+    rctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
+    rctx.fillRect(0, 0, size.x, size.y);
+    rctx.globalCompositeOperation = 'source-over';
+
+    const strokes = [new Path2D(), new Path2D(), new Path2D()];
+    for (const p of parts) {
+      p.age += dt;
+      if (receiver[p.i] < 0 || p.age > p.life) { spawn(p); continue; }
+      // Faster on steeper ground. Sped up a lot: this is a cartoon, not a clock.
+      p.t += (10 + 120 * Math.sqrt(slope[p.i])) * dt;
+      while (p.t >= 1 && receiver[p.i] >= 0) { p.i = receiver[p.i]; p.t -= 1; }
+      const r = receiver[p.i] >= 0 ? receiver[p.i] : p.i, f = Math.min(1, p.t);
+      const cx = (p.i % W) + 0.5, cy = Math.floor(p.i / W) + 0.5;
+      const x = tl.x + (cx + ((r % W) + 0.5 - cx) * f) * kx;
+      const y = tl.y + (cy + (Math.floor(r / W) + 0.5 - cy) * f) * ky;
+      if (!Number.isNaN(p.sx) && (x > -20 && y > -20 && x < size.x + 20 && y < size.y + 20)) {
+        const s = strokes[acc[p.i] > 20000 ? 2 : acc[p.i] > MIN_AREA ? 1 : 0];
+        s.moveTo(p.sx, p.sy); s.lineTo(x, y);
+      }
+      p.sx = x; p.sy = y;
+    }
+    rctx.strokeStyle = RAIN_COLOUR[basemap];
+    rctx.lineCap = 'round';
+    strokes.forEach((s, k) => { rctx.lineWidth = 1.1 + k * 0.7; rctx.stroke(s); });
+  }
+  sizeRain();
+  map.on('resize', () => { sizeRain(); clearRain(); });
+  map.on('move', clearRain);
+  map.on('zoomstart', () => { rainCanvas.style.visibility = 'hidden'; });
+  map.on('zoomend', () => { clearRain(); rainCanvas.style.visibility = ''; });
+  requestAnimationFrame(rainFrame);
+
+  // ---- controls ------------------------------------------------------------
+  const rainBtn = document.getElementById('btn-rain');
+  rainBtn.addEventListener('click', () => {
+    raining = !raining;
+    rainBtn.setAttribute('aria-pressed', raining);
+    clearRain();
+  });
+  const toggle = (id, layer) => document.getElementById(id).addEventListener('change', (e) => {
+    e.target.checked ? layer.addTo(map) : layer.remove();
+  });
+  toggle('l-fences', fenceLayer);
+  toggle('l-flow', flowLayer);
+  toggle('l-buildings', buildingLayer);
+  toggle('l-council', councilLayer);
+  toggle('l-pond', pondLayer);
+  toggle('l-shade', shadeLayer);
+  for (const name of ['streets', 'aerial']) {
+    document.getElementById('b-' + name).addEventListener('click', () => {
+      if (basemap === name) return;
+      basemaps[basemap].remove();
+      basemap = name;
+      basemaps[name].addTo(map);
+      for (const n of ['streets', 'aerial']) document.getElementById('b-' + n).setAttribute('aria-pressed', n === name);
+      renderFlow();
+      clearRain();
+    });
+  }
+
+  document.getElementById('sources').textContent =
+    `Points: ${LIDAR.source}. Terrain: ${D.source.dem}. Buildings: ${D.source.buildings}. Boundaries: LINZ NZ Primary Parcels. Council paths: ${D.source.olfp}.`;
+  document.getElementById('loading').remove();
+  showFence();
+  // A link like indexv4.html#3 opens on boundary 3.
+  const linked = parseInt(location.hash.slice(1), 10);
+  if (linked >= 1 && linked <= fences.length) choose(linked - 1);
+}
+</script>
+</body>
+</html>

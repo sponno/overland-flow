@@ -3,6 +3,7 @@
 *.las
 *.tif
 *.tiff
+lidar/
 
 .DS_Store
 __pycache__/
