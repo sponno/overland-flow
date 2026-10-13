@@ -26,6 +26,8 @@
   body { font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; color: var(--ink); background: #dfe6ec; }
   button { font: inherit; color: inherit; cursor: pointer; }
   #map { position: fixed; inset: 0; background: #dfe6ec; }
+  #map.dropping, #map.dropping .leaflet-interactive { cursor: crosshair; }
+  #map.dropping .fence-pin { pointer-events: none; } /* every click on the map is a drop */
   #map.over-fence, #map.over-fence .leaflet-interactive { cursor: pointer; }
   #rain { position: absolute; inset: 0; z-index: 450; pointer-events: none; }
 
@@ -126,6 +128,14 @@
   .leaflet-tooltip.fence-tip { font-size: 12.5px; line-height: 1.35; padding: 6px 9px; border: 0; border-radius: 8px; box-shadow: 0 3px 14px rgba(20, 32, 46, 0.3); }
   .fence-tip b { font-weight: 600; }
 
+  /* What the last drop did, in the middle of the map. */
+  #drop-note {
+    position: fixed; left: calc(50% + 184px); bottom: 18px; transform: translateX(-50%); z-index: 1000; pointer-events: none;
+    background: rgba(20, 32, 46, 0.9); color: #fff; padding: 7px 14px; border-radius: 999px; font-size: 13px; white-space: nowrap;
+  }
+  #drop-note[hidden] { display: none; }
+  #drop-note b { font-weight: 600; }
+
   #loading {
     position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center; background: #dfe6ec;
     font-size: 16px; color: var(--muted);
@@ -138,7 +148,8 @@
     .head { padding: 14px 16px 10px; }
     h1 { font-size: 18px; }
     #fence-list { overflow: visible; }
-    #tools { top: 10px; left: 10px; right: 10px; gap: 6px; }
+    #tools { top: 10px; left: 10px; right: 10px; gap: 6px; flex-wrap: wrap; }
+    #drop-note { left: 50%; bottom: calc(50vh + 12px); width: max-content; max-width: 92vw; white-space: normal; text-align: center; border-radius: 12px; }
     #tools button { padding: 7px 10px; }
     .leaflet-top.leaflet-right { top: 46px; }
   }
@@ -153,6 +164,7 @@
     <button id="b-aerial" aria-pressed="false">Aerial</button>
   </div>
   <button id="btn-rain" aria-pressed="true">Rain</button>
+  <button id="btn-drop" aria-pressed="false">Drop water</button>
   <button id="btn-council" aria-pressed="false">Council’s flow paths</button>
 </div>
 
@@ -176,6 +188,7 @@
   <p class="ver"><a href="index.html">All versions</a> · <a href="indexv4.html">Previous: v4, the laser scan</a></p>
 </aside>
 
+<div id="drop-note" hidden></div>
 <div id="loading">Working out where the water goes…</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -246,6 +259,7 @@ function init() {
     return x < 0 || y < 0 || x >= W || y >= H ? -1 : y * W + x;
   };
   const pointOf = (x, y) => M.unproject(L.point(nw.x + x / W * (se.x - nw.x), nw.y - y / H * (nw.y - se.y)));
+  const latLngOf = (i) => pointOf((i % W) + 0.5, Math.floor(i / W) + 0.5);
   const extentOf = (cells) => {
     let x0 = W, y0 = H, x1 = 0, y1 = 0;
     for (const i of cells) {
@@ -255,6 +269,7 @@ function init() {
     return L.latLngBounds(pointOf(x0, y1 + 1), pointOf(x1 + 1, y0));
   };
 
+  const fmtLen = (m) => m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
   const fmtArea = (m2) => m2 < 10000 ? `${Math.round(m2).toLocaleString()} m²`
     : `${(m2 / 1e4).toFixed(m2 < 1e6 ? 1 : 0)} ha`;
   const fmtDepth = (m) => m < 1 ? `${Math.round(m * 100)} cm` : `${m.toFixed(1)} m`;
@@ -301,7 +316,11 @@ function init() {
   // A phone shows the whole area on a tall, narrow screen, so it needs more room to roam.
   const map = L.map('map', { zoomControl: false, minZoom: 14, maxZoom: 21, maxBounds: bounds.pad(wide ? 0.5 : 1.5) });
   if (wide) L.control.zoom({ position: 'bottomright' }).addTo(map);
-  else map.attributionControl.setPosition('topright'); // the sheet covers the bottom
+  else {
+    // The sheet covers the bottom, so the credits go under the switches at the top.
+    map.attributionControl.setPosition('topright');
+    document.querySelector('.leaflet-top.leaflet-right').style.top = document.getElementById('tools').offsetHeight + 14 + 'px';
+  }
   const basemaps = {
     streets: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxNativeZoom: 19, maxZoom: 21, attribution: '© OpenStreetMap contributors' }),
@@ -599,6 +618,7 @@ function init() {
       forced = forcedInto(model);
       renderFlow();
       renderChange();
+      clearDrop();
       clearRain();
       parts.forEach(spawn);
       if (k < 0) return;
@@ -619,7 +639,10 @@ function init() {
     hover(li ? +li.dataset.k : -1);
   });
   list.addEventListener('mouseleave', () => hover(-1));
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') choose(-1); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (dropping) setDropping(false); else choose(-1);
+  });
 
   // ---- pointing at a fence line --------------------------------------------
   // The nearest fence line to a point on the map, if one is within a finger's width of it.
@@ -659,12 +682,79 @@ function init() {
     pins[k].getElement()?.classList.add('hover');
     if (k !== chosen) map.openTooltip(tip.setLatLng(f.at).setContent(`<b>${f.rank} · ${title(f)}</b><br>If solid, ${effect(f)}`));
   }
-  map.on('mousemove', (e) => hover(overPin >= 0 ? overPin : fenceNear(e.latlng)));
+  map.on('mousemove', (e) => hover(overPin >= 0 ? overPin : dropping ? -1 : fenceNear(e.latlng)));
   map.on('mouseout', () => { if (overPin < 0) hover(-1); });
   map.on('click', (e) => {
+    if (dropping) {
+      const i = cellOf(e.latlng);
+      if (i >= 0) drop(i);
+      return;
+    }
     const k = fenceNear(e.latlng);
     if (k >= 0) choose(k);
   });
+
+  // ---- one drop ------------------------------------------------------------
+  // With "Drop water" on, a click on the map follows one drop downhill instead of picking a fence.
+  // The list still picks one, so you can drop water with a fence up.
+  const ghostLine = L.polyline([], { color: '#2b3442', weight: 2.5, opacity: 0.85, dashArray: '4 7', interactive: false }).addTo(map);
+  const dropCasing = L.polyline([], { color: '#fff', weight: 7, opacity: 0.95, interactive: false }).addTo(map);
+  const dropLine = L.polyline([], { color: '#ff7a1a', weight: 3.5, interactive: false }).addTo(map);
+  const dropHead = L.circleMarker([0, 0], { radius: 6, color: '#fff', weight: 2, fillColor: '#ff7a1a', fillOpacity: 1, interactive: false });
+  const dropNote = document.getElementById('drop-note'), dropBtn = document.getElementById('btn-drop');
+  const DROP_HINT = 'Click anywhere on the map to drop water there';
+  let dropping = false, dropAnim = 0;
+  function clearDrop() {
+    cancelAnimationFrame(dropAnim);
+    for (const line of [ghostLine, dropCasing, dropLine]) line.setLatLngs([]);
+    dropHead.remove();
+    dropNote.textContent = DROP_HINT;
+  }
+  function setDropping(on) {
+    dropping = on;
+    dropBtn.setAttribute('aria-pressed', on);
+    map.getContainer().classList.toggle('dropping', on);
+    dropNote.hidden = !on;
+    clearDrop();
+    hover(-1);
+  }
+  dropBtn.addEventListener('click', () => setDropping(!dropping));
+
+  function drop(start) {
+    const path = Flow.trace(receiver, start);
+    let length = 0, joinAfter = null;
+    for (let k = 1; k < path.length; k++) {
+      const a = path[k - 1], b = path[k];
+      length += (a % W !== b % W && Math.floor(a / W) !== Math.floor(b / W)) ? Math.SQRT2 : 1;
+      if (joinAfter === null && acc[b] >= MIN_AREA) joinAfter = length;
+    }
+    const end = path[path.length - 1];
+    const said = [`<b>${fmtLen(length)} ${z[end] < 0.5 ? 'to the sea' : 'to the edge of the map'}</b>`, `falls ${(z[start] - z[end]).toFixed(0)} m`];
+    if (acc[start] >= MIN_AREA) said.push('starts on a flow path');
+    else if (joinAfter !== null) said.push(`joins a flow path after ${fmtLen(joinAfter)}`);
+    else said.push('never joins a flow path');
+    // Dashed line: where the same drop goes with the fence down.
+    const before = chosen < 0 ? path : Flow.trace(base.receiver, start);
+    const moved = before.length !== path.length || before.some((c, k) => c !== path[k]);
+    ghostLine.setLatLngs(moved ? before.map(latLngOf) : []);
+    if (chosen >= 0) said.push(moved ? 'dashed line is the way it goes without the fence' : 'the fence makes no difference to this drop');
+    dropNote.innerHTML = said.join(' · ');
+
+    const pts = path.map(latLngOf);
+    const duration = Math.max(1200, Math.min(6000, length * 4));
+    const t0 = performance.now();
+    cancelAnimationFrame(dropAnim);
+    dropHead.addTo(map);
+    (function frame(now) {
+      const p = Math.min(1, (now - t0) / duration);
+      const k = Math.max(1, Math.round(p * (pts.length - 1)));
+      const shown = pts.slice(0, k + 1);
+      dropCasing.setLatLngs(shown);
+      dropLine.setLatLngs(shown);
+      dropHead.setLatLng(pts[Math.min(k, pts.length - 1)]);
+      if (p < 1) dropAnim = requestAnimationFrame(frame);
+    })(t0);
+  }
 
   // ---- rain ----------------------------------------------------------------
   const rainCanvas = Object.assign(document.createElement('canvas'), { id: 'rain' });

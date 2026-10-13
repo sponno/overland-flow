@@ -49,8 +49,10 @@ v5 adds no new analysis. It is v3 and v4 rebuilt so someone new can read it: one
 the 91 fence lines that matter, in plain words ("Looks like a fence, 1.6 m high. If solid,
 sends water through 4 more properties"). Pick one from the list or the map and it opens in
 place, the fence goes up on the map, and a round X beside it takes it down again. The
-colour chips filter the list and the map. Clicking the map no longer drops water (v1 to v4
-still do). Same numbering again: `indexv5.html#3`.
+colour chips filter the list and the map. "Drop water" at the top right switches the map
+to dropping: click anywhere and one drop runs downhill, as in v1, and with a fence up a
+dashed line shows where it would have gone without it. Same numbering again:
+`indexv5.html#3`.
 
 ## Files
 
