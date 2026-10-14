@@ -20,22 +20,29 @@ number, add a card to `index.html`, and add a row here.
 
 ## The idea
 
-**An active map, not a blanket rule.** Written up at
+**An active map, not a blanket rule.** Written up, with pictures, at
 https://sponno.github.io/overland-flow/idea.html (`idea.html`).
 
-Auckland's rule for a fence across a flood path is the right test: no ponding on someone
-else's land, no moving where the water crosses a boundary. But answering it for any one
-fence takes a site visit, so two blunt things stand in for it: the rule switches on at
-4,000 m² of catchment, and every owner on a flow path gets the same advice.
+1. **The rule.** A fence across an overland flow path must not obstruct it: no "ponding
+   beyond the boundaries of the property", no "diverting the entry or exit point". It
+   applies where more than 4,000 m² of land drains to the fence (Unitary Plan, E36).
+2. **Our hypothesis.** Nobody can run that test on a fence without a site visit, so the
+   4,000 m² line stands in for it, and the line is wrong about as often as it is right.
+3. **What we found.** We ran the rule's own test on all 1,015 fence lines in one area. The
+   line was right for 400 of the 808 with a clear answer: 50%.
 
-We ran the test on every fence line in one area instead. Of the 721 the rule covers, a
-solid fence passes on 310, fails on 260 and depends on whose fence it is on 151. Catchment
-size does not predict which: about a third fail in every size band. 40 fences account for
-40% of the properties affected.
+| | Does harm if solid | No harm | Depends whose fence |
+| --- | --- | --- | --- |
+| Over the line (rule applies, 721) | 260, right | 310, wrong | 151 |
+| Under the line (rule silent, 294) | 98, wrong | 140, right | 56 |
 
-So: give every fence line a status (any fence, keep it open, to decide), tie it to the
-properties either side, put it on the flow path map Council already keeps, and re-run it
-when the ground or the facts change. The same rule, pointed at a map that can answer it.
+About a third of fence lines do harm in every catchment size band, so size is not the
+signal. What decides it is the ground round the fence.
+
+So: test every fence line and keep the answers on the flow path map Council already has.
+Each fence line gets a status (any fence, keep it open, to decide), tied to the properties
+either side, and the map re-runs when the ground or the facts change. The rule keeps its
+test and drops the 4,000 m² line.
 
 ## What is here
 
