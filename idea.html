@@ -31,8 +31,15 @@
   .claim.found { border-color: var(--ink); background: var(--ink); color: #fff; }
   .claim.found .label { color: #8fc0ff; }
   .claim.found a { color: #8fc0ff; }
-  .claim.found .number { font-size: 64px; line-height: 1; font-weight: 700; letter-spacing: -0.03em; margin: 2px 0 8px; }
-  .claim.found li { margin-bottom: 4px; }
+  .tally { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 14px 0; }
+  .tally div { background: rgba(255, 255, 255, 0.08); border-radius: 10px; padding: 10px 12px 12px; border-top: 4px solid; font-size: 13px; line-height: 1.35; color: #c9d4e0; }
+  .tally .word { display: block; font-size: 12px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: #fff; }
+  .tally b { display: block; font-size: 34px; line-height: 1.1; font-weight: 700; letter-spacing: -0.02em; color: #fff; margin: 2px 0 0; }
+  .tally .pct { display: block; font-size: 17px; font-weight: 650; color: #fff; margin-bottom: 6px; }
+  .tally .right { border-color: #4cc46a; }
+  .tally .wrong { border-color: #ff6b6b; }
+  .tally .missed { border-color: #ffb020; }
+  .tally .unsure { border-color: var(--none); }
 
   ol.steps { padding-left: 0; list-style: none; counter-reset: step; }
   ol.steps > li { counter-increment: step; position: relative; padding-left: 44px; margin-bottom: 14px; }
@@ -56,6 +63,7 @@
   .matrix td span { font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
   .matrix .right { background: #e1f3e5; color: #1b6a2e; }
   .matrix .wrong { background: #fbdcdc; color: #9a1c1c; }
+  .matrix .missed { background: #fdebc3; color: #7a5200; }
   .matrix .unsure { background: var(--soft); color: var(--muted); }
 
   /* Five bars that come out about the same length, which is the point. */
@@ -105,7 +113,8 @@
     h2 { font-size: 21px; margin-top: 36px; }
     .claim { padding: 16px 18px; }
     .claim .big { font-size: 19px; }
-    .claim.found .number { font-size: 52px; }
+    .tally { grid-template-columns: 1fr 1fr; }
+    .tally b { font-size: 30px; }
     .matrix { font-size: 13px; }
     .matrix td b { font-size: 21px; }
     .statuses, .pair { grid-template-columns: 1fr; }
@@ -133,13 +142,14 @@
 
   <div class="claim found">
     <p class="label">3. What we found</p>
-    <p class="number">50%</p>
-    <p class="big">We ran the rule’s test on every fence line in one area. The line was right for 400 of 808.</p>
-    <ul>
-      <li>The rule catches 721 fence lines. Only 260 of them (36%) would do harm if the fence were solid.</li>
-      <li>It misses 98 that would.</li>
-      <li>So test every fence line, and <a href="#map">keep the answers on a map</a>.</li>
-    </ul>
+    <p class="big">Tested on all 1,015 fence lines in one area, the rule is right on 4 in 10.</p>
+    <div class="tally">
+      <div class="right"><span class="word">Right</span><b>400</b><span class="pct">39%</span>260 caught that do harm, 140 left alone that don’t</div>
+      <div class="wrong"><span class="word">Wrong</span><b>310</b><span class="pct">31%</span>Caught by the rule, but a solid fence there does no harm</div>
+      <div class="missed"><span class="word">Missed</span><b>98</b><span class="pct">10%</span>Does harm, but under the line, so the rule is silent</div>
+      <div class="unsure"><span class="word">Can’t say</span><b>207</b><span class="pct">20%</span>Water on the uphill neighbour only. The wording doesn’t decide</div>
+    </div>
+    <p>Wrong or missed 408 times, right 400. The hypothesis holds. So test every fence line, and <a href="#map">keep the answers on a map</a>.</p>
   </div>
 
   <h2>How we got there</h2>
@@ -165,13 +175,13 @@
         </tr>
         <tr>
           <th>Under the line <small>rule silent, 294</small></th>
-          <td class="wrong"><b>98</b><span>wrong</span></td>
+          <td class="missed"><b>98</b><span>missed</span></td>
           <td class="right"><b>140</b><span>right</span></td>
           <td class="unsure"><b>56</b><span>can’t say</span></td>
         </tr>
       </tbody>
     </table>
-    <p class="note">Right 400 times, wrong 408, out of the 808 with a clear answer. On the other 207 the water stands only on the uphill neighbour’s land, and the rule’s wording can’t say whether that counts for a shared fence.</p>
+    <p class="note">Right 260 + 140 = 400. Wrong 310. Missed 98. On the other 207 the water stands only on the uphill neighbour’s land, and the rule’s wording can’t say whether that counts for a shared fence.</p>
   </div>
 
   <ol class="steps on">

@@ -28,13 +28,19 @@ https://sponno.github.io/overland-flow/idea.html (`idea.html`).
    applies where more than 4,000 m² of land drains to the fence (Unitary Plan, E36).
 2. **Our hypothesis.** Nobody can run that test on a fence without a site visit, so the
    4,000 m² line stands in for it, and the line is wrong about as often as it is right.
-3. **What we found.** We ran the rule's own test on all 1,015 fence lines in one area. The
-   line was right for 400 of the 808 with a clear answer: 50%.
+3. **What we found.** We ran the rule's own test on all 1,015 fence lines in one area.
+   The rule is right on 400 (39%), wrong on 310 (31%), misses 98 (10%) and can't say on
+   207 (20%). Wrong or missed 408 times against right 400, so the hypothesis holds.
 
 | | Does harm if solid | No harm | Depends whose fence |
 | --- | --- | --- | --- |
-| Over the line (rule applies, 721) | 260, right | 310, wrong | 151 |
-| Under the line (rule silent, 294) | 98, wrong | 140, right | 56 |
+| Over the line (rule applies, 721) | 260, right | 310, wrong | 151, can't say |
+| Under the line (rule silent, 294) | 98, missed | 140, right | 56, can't say |
+
+Right means the line and the test agree. Wrong means the rule catches a fence line where
+a solid fence does no harm. Missed means a solid fence does harm but the path is under
+the line. Can't say means water stands only on the uphill neighbour's land, and the
+wording doesn't decide whether that counts for a shared fence.
 
 About a third of fence lines do harm in every catchment size band, so size is not the
 signal. What decides it is the ground round the fence.
