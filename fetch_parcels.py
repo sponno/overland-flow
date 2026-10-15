@@ -4,27 +4,25 @@
 # ///
 """Fetch LINZ primary parcels for the area data.js covers and write parcels.js.
 
-  uv run fetch_parcels.py
+  uv run fetch_parcels.py      (AREA=mtalbert for another area, as in fetch_data.py)
 
 Run fetch_data.py first: this reads the grid from data.js so the two line up cell
 for cell. Each cell ends up holding 0 (no parcel) or a parcel number.
 """
 import json
 from collections import Counter
-from pathlib import Path
 
 from pyproj import Transformer
 from rasterio.features import rasterize
 from rasterio.transform import from_origin
 
-from fetch_data import arcgis_features, run_length
+from fetch_data import OUT, arcgis_features, run_length
 
 PARCELS_URL = "https://services.arcgis.com/xdsHIIxuCWByZiCB/arcgis/rest/services/LINZ_NZ_Primary_Parcels/FeatureServer/0/query"
-HERE = Path(__file__).parent
 
 
 def main():
-    text = (HERE / "data.js").read_text()
+    text = (OUT / "data.js").read_text()
     grid = json.loads(text[text.index("{"):text.rindex("}") + 1])
     south, west, north, east = grid["bounds"]
     width, height = grid["width"], grid["height"]
@@ -50,7 +48,7 @@ def main():
     for intent, n in Counter(p["intent"] for p in parcels).most_common():
         print(f"  {n:5d}  {intent}")
 
-    out = HERE / "parcels.js"
+    out = OUT / "parcels.js"
     data = {
         "source": "LINZ NZ Primary Parcels", "width": width, "height": height,
         # Cell value n means the nth parcel; parcels[n - 1] holds its LINZ id and intent.

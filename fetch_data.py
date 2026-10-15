@@ -2,9 +2,11 @@
 # requires-python = ">=3.11"
 # dependencies = ["rasterio", "numpy", "pyproj"]
 # ///
-"""Fetch real data around one address and write data.js for the viewer.
+"""Fetch real data around one point and write data.js for the viewer.
 
-  uv run fetch_data.py [lat lon west east north south label]
+  uv run fetch_data.py                  the Vermont St area, into this folder
+  AREA=mtalbert uv run fetch_data.py    another area from AREAS, into its own folder
+  uv run fetch_data.py lat lon [west east north south label]
 
 Pulls:
   - Auckland 2024 1 m DEM (bare earth) from the LINZ nz-elevation open bucket,
@@ -18,6 +20,7 @@ lines up exactly with web map tiles.
 import base64
 import json
 import math
+import os
 import sys
 import urllib.parse
 import urllib.request
@@ -30,12 +33,23 @@ from rasterio.features import rasterize
 from rasterio.transform import from_origin
 from rasterio.warp import Resampling, reproject
 
-# Top of Vermont Street, Ponsonby: the highest point on the street centreline (OSM)
-# that drains down the street. The last couple of metres at Ponsonby Rd sit on the
-# ridge and shed east instead.
-LAT, LON = -36.85299552, 174.74517279
-EXTENT = (1742, 258, 590, 710)  # metres west, east, north, south of the point
-LABEL = "Top of Vermont St"
+# Each area is a point, how far the map runs from it in metres (west, east, north, south),
+# and the folder its data files go in. The scripts that follow pick it up from AREA too.
+AREAS = {
+    # Top of Vermont Street, Ponsonby: the highest point on the street centreline (OSM)
+    # that drains down the street. The last couple of metres at Ponsonby Rd sit on the
+    # ridge and shed east instead.
+    "": dict(lat=-36.85299552, lon=174.74517279, extent=(1742, 258, 590, 710), label="Top of Vermont St"),
+    # Mt Albert / Sandringham: the 2024 point cloud's 1:1,000 tile BA31_1000_4245, 480 x 720 m,
+    # which is the pilot area the hackathon suggests. It sits on the slopes of Owairaka, so
+    # little water comes in: everything that drains into the tile is within 60 m of it. The
+    # map runs 300 m past the tile on every side so the streets it drains onto are in the
+    # model too. Only fence lines a flow path crosses inside the tile are tested.
+    "mtalbert": dict(lat=-36.88844381, lon=174.72102548, extent=(540, 540, 660, 660), label="Mt Albert",
+                     focus=("BA31_1000_4245", 1753120, 5916480, 1753600, 5915760)),  # NZTM west, north, east, south
+}
+AREA = os.environ.get("AREA", "")
+OUT = Path(__file__).parent / AREA  # where this area's data.js, parcels.js and the rest live
 
 DEM_BASE = "https://nz-elevation.s3.ap-southeast-2.amazonaws.com/auckland/auckland-part-1_2024/dem_1m/2193"
 OLFP_URL = "https://services1.arcgis.com/n4yPwebTjJCmXB6W/arcgis/rest/services/Overland_Flow_Paths/FeatureServer/0/query"
@@ -144,11 +158,24 @@ def run_length(a):
     return b64(lengths, "<u4"), b64(flat[starts], "<u2")
 
 
+def focus_box(focus, transform, k):
+    """The tile we test fences in: its corners as lat/lon for the map, and as grid cells."""
+    name, w, n, e, s = focus
+    to_wgs = Transformer.from_crs(2193, 4326, always_xy=True)
+    to_merc = Transformer.from_crs(2193, 3857, always_xy=True)
+    corners = [(w, n), (e, n), (e, s), (w, s)]
+    latlon = [[round(lat, 7), round(lon, 7)] for lon, lat in (to_wgs.transform(x, y) for x, y in corners)]
+    cells = [[round((mx - transform.c) / k, 1), round((transform.f - my) / k, 1)]
+             for mx, my in (to_merc.transform(x, y) for x, y in corners)]
+    return {"name": name, "corners": latlon, "cells": cells}
+
+
 def main():
-    lat, lon, extent, label = LAT, LON, EXTENT, LABEL
+    area = AREAS[AREA]
+    lat, lon, extent, label = area["lat"], area["lon"], area["extent"], area["label"]
     if len(sys.argv) >= 3:
         lat, lon = float(sys.argv[1]), float(sys.argv[2])
-        extent = tuple(int(v) for v in sys.argv[3:7]) if len(sys.argv) > 6 else EXTENT
+        extent = tuple(int(v) for v in sys.argv[3:7]) if len(sys.argv) > 6 else extent
         label = sys.argv[7] if len(sys.argv) > 7 else f"{lat:.5f}, {lon:.5f}"
 
     dem, bounds, tiles, home, transform = fetch_dem(lat, lon, extent)
@@ -181,7 +208,10 @@ def main():
         "buildings": {"runs": runs, "values": values, "linz_ids": linz_ids},
         "dem": base64.b64encode(q.tobytes()).decode(),
     }
-    out = Path(__file__).with_name("data.js")
+    if area.get("focus"):
+        data["focus"] = focus_box(area["focus"], transform, transform.a)
+    OUT.mkdir(exist_ok=True)
+    out = OUT / "data.js"
     out.write_text("globalThis.FLOW_DATA = " + json.dumps(data, separators=(",", ":")) + ";\n")
     print("wrote", out, f"{out.stat().st_size / 1e6:.1f} MB")
 

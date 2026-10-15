@@ -2,6 +2,7 @@
 // flow path crosses, one at a time, run the model again and measure what moved.
 //
 //   node rank_fences.js      needs data.js and parcels.js, writes fences.js
+//   AREA=mtalbert node rank_fences.js     the same for another area's folder
 //
 // A "fence" here is the whole boundary two parcels share. Nothing is detected: this
 // asks where a fence would change the outcome if there were one.
@@ -9,8 +10,10 @@ const { Worker, isMainThread, parentPort, workerData } = require('worker_threads
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-require('./data.js');
-require('./parcels.js');
+// AREA=mtalbert reads and writes that area's folder instead, as in fetch_data.py.
+const DIR = path.join(__dirname, process.env.AREA || '');
+require(path.join(DIR, 'data.js'));
+require(path.join(DIR, 'parcels.js'));
 const Flow = require('./flow.js');
 
 const MIN_AREA = 2000;     // m², the smallest catchment Council maps as a flow path
@@ -34,6 +37,20 @@ const skip = new Uint8Array(N); // cells that can't carry a flow path: buildings
 for (let i = 0; i < N; i++) if (buildingAt[i]) { walls[i] = BUILDING_HEIGHT; skip[i] = 1; }
 const base = Flow.compute(z, W, H, walls);
 
+// When the area has a focus tile (data.js "focus"), only boundaries crossed inside it count.
+function inFocus(i) {
+  if (!D.focus) return true;
+  const q = D.focus.cells, x = i % W + 0.5, y = Math.floor(i / W) + 0.5;
+  let sign = 0;
+  for (let k = 0; k < 4; k++) {
+    const [x1, y1] = q[k], [x2, y2] = q[(k + 1) % 4];
+    const s = Math.sign((x2 - x1) * (y - y1) - (y2 - y1) * (x - x1));
+    if (s && sign && s !== sign) return false;
+    sign = sign || s;
+  }
+  return true;
+}
+
 // Every boundary a flow path crosses on open ground, with the cells a fence would stand on.
 function findFences() {
   const size = new Int32Array(P.parcels.length + 1);
@@ -56,9 +73,10 @@ function findFences() {
       const side = fenceSide(a, b), other = side === a ? b : a;
       // LINZ parcel ids either side, the one the fence stands in first.
       const between = [side, other].map((p) => p ? P.parcels[p - 1].id : null);
-      fences.set(key(a, b), f = { side, between, street: isPublic(a) || isPublic(b), area: 0, cells: [] });
+      fences.set(key(a, b), f = { side, between, street: isPublic(a) || isPublic(b), area: 0, cells: [], focus: false });
     }
     f.area = Math.max(f.area, base.acc[i]);
+    if (inFocus(i)) f.focus = true;
   }
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
@@ -74,7 +92,7 @@ function findFences() {
       }
     }
   }
-  return [...fences.values()].filter((f) => f.cells.length <= MAX_LENGTH);
+  return [...fences.values()].filter((f) => f.focus && f.cells.length <= MAX_LENGTH);
 }
 
 // Flow path cells on open ground per parcel, and whether each building has one against it.
@@ -165,7 +183,7 @@ async function main() {
       cells: f.cells.map((c, k) => k ? c - f.cells[k - 1] : c),
     })),
   };
-  const file = path.join(__dirname, 'fences.js');
+  const file = path.join(DIR, 'fences.js');
   fs.writeFileSync(file, 'globalThis.FENCE_DATA = ' + JSON.stringify(out) + ';\n');
   console.log('wrote', file, (fs.statSync(file).size / 1e6).toFixed(1), 'MB');
 }

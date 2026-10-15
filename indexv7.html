@@ -1,0 +1,991 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mt Albert pilot tile v7</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --ink: #14202e;
+    --muted: #5b6b7c;
+    --line: #e3e8ee;
+    --soft: #f1f4f7;
+    --water: #1466e0;
+    --council: #c2188b;
+    --none: #7c8796;
+    --route: #e11d74;
+    --level: #d72828;
+    --ragged: #2f9e44;
+    --part: #f5aa00;
+    --open: #ffffff;
+    --panel: rgba(255, 255, 255, 0.96);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; color: var(--ink); background: #dfe6ec; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  #map { position: fixed; inset: 0; background: #dfe6ec; }
+  #map.dropping, #map.dropping .leaflet-interactive { cursor: crosshair; }
+  #map.dropping .fence-pin { pointer-events: none; } /* every click on the map is a drop */
+  #map.over-fence, #map.over-fence .leaflet-interactive { cursor: pointer; }
+  #rain { position: absolute; inset: 0; z-index: 450; pointer-events: none; }
+
+  #panel {
+    position: fixed; top: 16px; left: 16px; width: 352px; max-height: calc(100vh - 32px);
+    display: flex; flex-direction: column; overflow: hidden;
+    background: var(--panel); backdrop-filter: blur(10px); border-radius: 14px;
+    box-shadow: 0 8px 30px rgba(20, 32, 46, 0.18), 0 0 0 1px rgba(20, 32, 46, 0.06); z-index: 1000;
+  }
+  .head { padding: 18px 18px 12px; }
+  h1 { font-size: 20px; line-height: 1.2; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .tag { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; margin-left: 6px; vertical-align: 3px; white-space: nowrap; }
+  .sub { margin: 0 0 8px; color: var(--muted); }
+  .sub b { color: var(--ink); font-weight: 600; }
+  .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin: 12px 0 6px; }
+
+  details { color: var(--muted); font-size: 13px; }
+  summary { cursor: pointer; color: var(--ink); font-weight: 600; }
+  details p { margin: 8px 0 0; }
+  details b { color: var(--ink); font-weight: 600; }
+
+  /* The colours, and the filter: one thing does both. */
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips button {
+    display: flex; align-items: center; gap: 6px; font-size: 13px; padding: 4px 10px; border-radius: 999px;
+    border: 1px solid #d3dae2; background: #fff;
+  }
+  .chips button:hover { border-color: #aab5c1; }
+  .chips button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .chips i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .chips span { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .chips button[aria-pressed="true"] span { color: #c3ccd6; }
+
+  .v-level { background: var(--level); color: #fff; }
+  .v-ragged { background: var(--ragged); color: #fff; }
+  .v-part { background: var(--part); color: var(--ink); }
+  .v-open { background: var(--open); color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--ink); }
+  .v-none, .v-hidden, .v-building { background: var(--none); color: #fff; }
+
+  #fence-list { list-style: none; margin: 0; padding: 4px 10px 8px; overflow: auto; min-height: 0; border-top: 1px solid var(--line); }
+  #fence-list > li { border-radius: 10px; margin-top: 2px; }
+  #fence-list > li.hover { background: var(--soft); }
+  #fence-list > li.active { background: var(--soft); box-shadow: inset 0 0 0 1.5px var(--ink); margin: 6px 0; }
+  .row { display: flex; align-items: center; }
+  .pick {
+    flex: 1; display: grid; grid-template-columns: 24px 1fr; gap: 10px; align-items: start; text-align: left;
+    background: none; border: 0; border-radius: 10px; padding: 7px 8px;
+  }
+  .pick strong { display: block; font-weight: 600; }
+  .pick small { display: block; font-size: 12.5px; color: var(--muted); }
+  .n, .fence-pin b { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; font: 700 11px/1 -apple-system, sans-serif; }
+  /* The round X: on the open row in the list, and beside the fence on the map. */
+  .x, .fence-x button {
+    display: grid; place-items: center; flex: none; width: 26px; height: 26px; padding: 0 0 2px; border-radius: 50%;
+    border: 2px solid #fff; background: var(--ink); color: #fff; font: 600 17px/1 -apple-system, sans-serif;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  }
+  .x:hover, .fence-x button:hover { background: #33455a; }
+  .x { margin-right: 8px; }
+  #fence-list > li:not(.active) .x { display: none; }
+
+  .more { padding: 0 12px 12px; }
+  .more p { margin: 0 0 8px; }
+  .more h2 { font-size: 12px; font-weight: 400; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin: 12px 0 4px; padding-top: 10px; border-top: 1px solid #dde3ea; }
+  .more ul { margin: 0; padding: 0 0 0 18px; list-style: disc; }
+  .more li { padding: 1px 0; }
+  .more b { font-weight: 600; }
+  .more .note { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+  .more a { color: var(--water); white-space: nowrap; }
+  #profile { display: block; width: 100%; border-radius: 6px; background: #fff; }
+  .key { display: flex; flex-wrap: wrap; gap: 3px 12px; margin-top: 6px; font-size: 12px; color: var(--muted); }
+  .key span { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .key i { width: 14px; height: 4px; border-radius: 2px; flex: none; }
+  .key .dot { width: 9px; height: 9px; border-radius: 50%; }
+  /* The two tests, each with a tick, a cross or a question mark. */
+  .outcome { font-size: 17px; line-height: 1.25; font-weight: 650; letter-spacing: -0.01em; margin: 0 0 6px; }
+  .more ul.tests { list-style: none; padding: 0; }
+  .tests li { position: relative; padding: 3px 0 3px 26px; }
+  .tests li::before {
+    position: absolute; left: 0; top: 4px; width: 18px; height: 18px; border-radius: 50%;
+    display: grid; place-items: center; color: #fff; font: 700 11px/1 -apple-system, sans-serif;
+  }
+  .tests .fail::before { content: "✕"; background: var(--level); }
+  .tests .pass::before { content: "✓"; background: var(--ragged); }
+  .tests .maybe::before { content: "?"; background: var(--part); color: var(--ink); }
+  .tests .info::before { content: "i"; background: var(--none); }
+  .wait { display: none; }
+  .busy .wait { display: block; }
+  .busy .mapkey { display: none; }
+
+  .ver { margin: 0; padding: 8px 18px 10px; font-size: 12px; border-top: 1px solid var(--line); }
+  .ver a { color: var(--muted); }
+
+  /* Map switches, top right. */
+  #tools { position: fixed; top: 16px; right: 16px; z-index: 1000; display: flex; gap: 8px; }
+  #tools button, #tools .seg {
+    background: #fff; border: 0; border-radius: 9px; font-size: 13px; font-weight: 600;
+    box-shadow: 0 2px 10px rgba(20, 32, 46, 0.2), 0 0 0 1px rgba(20, 32, 46, 0.08);
+  }
+  #tools button { padding: 7px 12px; white-space: nowrap; }
+  #tools .seg { display: flex; overflow: hidden; }
+  #tools .seg button { box-shadow: none; border-radius: 0; color: var(--muted); }
+  #tools .seg button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+  #tools > button[aria-pressed="true"] { background: #e8f1ff; color: #0c4fb8; }
+
+  .fence-pin b { border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45); cursor: pointer; transition: transform 0.12s; }
+  .fence-pin b.v-open { border-color: var(--ink); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45); }
+  /* Zoomed out there are too many numbers to read, so the pins shrink to dots. */
+  #map.far .fence-pin:not(.hover):not(.active) b { width: 12px; height: 12px; margin: 6px; font-size: 0; border-width: 1.5px; }
+  .fence-pin.hover b { transform: scale(1.25); }
+  .fence-pin.active b { transform: scale(1.35); border-color: var(--ink); box-shadow: 0 0 0 2px #fff, 0 2px 8px rgba(0, 0, 0, 0.5); }
+  .leaflet-tooltip.fence-tip { font-size: 12.5px; line-height: 1.35; padding: 6px 9px; border: 0; border-radius: 8px; box-shadow: 0 3px 14px rgba(20, 32, 46, 0.3); }
+  .fence-tip b { font-weight: 600; }
+
+  /* What the last drop did, in the middle of the map. */
+  #drop-note {
+    position: fixed; left: calc(50% + 184px); bottom: 18px; transform: translateX(-50%); z-index: 1000; pointer-events: none;
+    background: rgba(20, 32, 46, 0.9); color: #fff; padding: 7px 14px; border-radius: 999px; font-size: 13px; white-space: nowrap;
+  }
+  #drop-note[hidden] { display: none; }
+  #drop-note b { font-weight: 600; }
+
+  #loading {
+    position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center; background: #dfe6ec;
+    font-size: 16px; color: var(--muted);
+  }
+  .leaflet-container { font: inherit; }
+
+  @media (max-width: 640px) {
+    /* A bottom sheet that scrolls as one piece. */
+    #panel { top: auto; bottom: 0; left: 0; width: 100%; max-height: 50vh; border-radius: 14px 14px 0 0; display: block; overflow: auto; }
+    .head { padding: 14px 16px 10px; }
+    h1 { font-size: 18px; }
+    #fence-list { overflow: visible; }
+    #tools { top: 10px; left: 10px; right: 10px; gap: 6px; flex-wrap: wrap; }
+    #drop-note { left: 50%; bottom: calc(50vh + 12px); width: max-content; max-width: 92vw; white-space: normal; text-align: center; border-radius: 12px; }
+    #tools button { padding: 7px 10px; }
+    .leaflet-top.leaflet-right { top: 46px; }
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="tools">
+  <div class="seg">
+    <button id="b-streets" aria-pressed="true">Map</button>
+    <button id="b-aerial" aria-pressed="false">Aerial</button>
+  </div>
+  <button id="btn-rain" aria-pressed="true">Rain</button>
+  <button id="btn-drop" aria-pressed="false">Drop water</button>
+  <button id="btn-council" aria-pressed="false">Council’s flow paths</button>
+</div>
+
+<aside id="panel">
+  <div class="head">
+    <h1>Mt Albert pilot tile<span class="tag">v7</span></h1>
+    <p class="sub">Auckland’s Unitary Plan allows a fence across a flow path only if it doesn’t back water up onto someone else’s land or move where the water crosses a boundary. We ran both tests in the hackathon’s starter tile, <b id="s-tile"></b> (480 × 720 m, outlined), on the <b id="s-plan"></b> fence lines the rule covers, as if each fence were solid. <b id="s-consent"></b> would fail.</p>
+    <p class="sub" id="s-four"></p>
+    <details id="how">
+      <summary>How this works, and what it can’t tell you</summary>
+      <p><b>The rule.</b> Unitary Plan chapter E36. A fence in an overland flow path is permitted if it does not obstruct the path, and the standard for that is that it “must not cause ponding beyond the boundaries of the property” (rule A39, standard E36.6.1.10(1)). “Diverting the entry or exit point” of a flow path needs consent, though moving it within one site does not (rule A41). An overland flow path is where rain from more than <span id="a-plan"></span> m² of land runs. Rule numbers are from Council’s practice note RC 3.2.18, February 2020, so check they are current.</p>
+      <p><b>The tests.</b> We stand a solid <span id="a-height"></span> m fence along each fence line, one at a time, and run the water again. Ponding: does water now stand <span id="a-pond"></span> cm or deeper, over <span id="a-pondarea"></span> m² or more, on land beyond the boundary? Diverting: does the flow path now cross into or out of a property at a place more than <span id="a-near"></span> m from where any flow path ran before?</p>
+      <p><b>Whose fence.</b> A fence on a street front belongs to the property behind it. A fence between neighbours belongs to both, so when the water stands only on the uphill neighbour’s land we can’t say whether that is beyond the fence owner’s boundary. Those are listed as “depends whose fence”.</p>
+      <p><b>What is there now.</b> A 2024 laser survey from the air (LiDAR) shows what stands along each line. “Fence” means something <span id="a-low"></span> to <span id="a-high"></span> m high along 70% of it or more, with an even top. “Hedge” is the same with an uneven top, which is more likely planting, or a fence with plants over it. “Gaps” is 35 to 70%. “Open” is less.</p>
+      <p><b>What it can’t tell you.</b> Whether the fence is solid. The laser can’t see a gap under the palings, which is the fix Council asks for, so every result here is “if solid”. The water model has no flow rates: the pond is as deep as it gets before the water finds a way out, however much rain that takes, so we show how much rain it takes. The fence is assumed to run the whole shared boundary. The biggest flow paths here may be streams, which the Plan handles under other rules. Nothing has been checked on the ground, the cut-offs are ours, and none of this is a legal opinion.</p>
+      <p><b>Where.</b> The same model and tests as <a href="indexv6.html">v6</a>, moved from Vermont St to the 2024 point cloud tile the hackathon suggests as a pilot area. The tile sits on the slopes of Ōwairaka, so little water comes into it: all the land that drains into it is within 60 m. The map runs 300 m past the tile so the water has streets to run on, but only fence lines a flow path crosses inside the tile are tested.</p>
+      <p id="sources"></p>
+    </details>
+    <div class="label">If the fence is solid</div>
+    <div class="chips" id="outcomes"></div>
+    <div class="label">What the laser found there</div>
+    <div class="chips" id="chips"></div>
+  </div>
+  <ol id="fence-list"></ol>
+  <p class="ver"><a href="idea.html">The idea</a> · <a href="index.html">All versions</a> · <a href="indexv6.html">Previous: v6, Vermont St</a></p>
+</aside>
+
+<div id="drop-note" hidden></div>
+<div id="loading">Working out where the water goes…</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="mtalbert/data.js"></script>
+<script src="mtalbert/fences.js"></script>
+<script src="mtalbert/lidar.js"></script>
+<script src="mtalbert/rules.js"></script>
+<script src="flow.js"></script>
+<script>
+setTimeout(init, 30);
+
+function init() {
+  const D = FLOW_DATA, F = FENCE_DATA, LIDAR = LIDAR_DATA, RULES = RULE_DATA, W = D.width, H = D.height, N = W * H;
+  const [south, west, north, east] = D.bounds;
+  const bounds = L.latLngBounds([south, west], [north, east]);
+  const MIN_AREA = F.minArea; // m², the smallest catchment Council maps
+
+  const z = Flow.decode(D);
+  const buildingAt = Flow.decodeBuildings(D); // building number per cell, 0 = open ground
+  const buildingCount = D.buildings.linz_ids.length;
+  const walls = new Float32Array(N);
+  const skip = new Uint8Array(N); // buildings, and the fence that is up
+  for (let i = 0; i < N; i++) if (buildingAt[i]) { walls[i] = F.buildingHeight; skip[i] = 1; }
+
+  // The run without any fence (v2), and the run on screen: the same, or with one fence up.
+  const base = Flow.compute(z, W, H, walls);
+  let model = base, diff = null;
+  let { receiver, slope, acc } = model;
+
+  // What the Plan's two tests add up to for a solid fence, worst first.
+  const OUTCOMES = {
+    consent: { chip: 'Needs consent', title: 'Would need resource consent' },
+    depends: { chip: 'Depends whose fence', title: 'Depends whose fence it is' },
+    permitted: { chip: 'Permitted', title: 'Would be permitted' },
+    below: { chip: `Under ${RULES.planArea.toLocaleString()} m²`, title: 'Outside the Plan’s rule' },
+  };
+  const ORDER = Object.keys(OUTCOMES);
+  // Every fence line from v3, with what the laser saw on it (v4) and how it does against the
+  // tests. Within an outcome, the fence that would affect the most properties comes first.
+  const fences = F.fences.map((f, k) => {
+    let c = 0;
+    const rule = RULES.fences[k];
+    return {
+      ...f, was: k + 1, cells: f.cells.map((step) => (c += step)), seen: LIDAR.fences[k], rule,
+      affected: new Set([...rule.pondLots, ...rule.moved]).size,
+    };
+  }).sort((a, b) => ORDER.indexOf(a.rule.outcome) - ORDER.indexOf(b.rule.outcome) || b.affected - a.affected || b.area - a.area);
+  fences.forEach((f, k) => { f.rank = k + 1; });
+  // The laser can't name a fence, so these say what it looks like.
+  const SEEN = {
+    level: { chip: 'Fence', title: 'Looks like a fence' },
+    ragged: { chip: 'Hedge', title: 'Looks like a hedge or trees' },
+    part: { chip: 'Gaps', title: 'Has gaps' },
+    open: { chip: 'Open', title: 'Mostly open' },
+    hidden: { title: 'Hidden from the laser' },
+    building: { title: 'A building stands on it' },
+    none: { title: 'Not scanned' },
+  };
+  let chosen = -1, hovered = -1, overPin = -1, outcome = 'consent', filter = 'all';
+  const shown = (f) => f.rule.outcome === outcome && (filter === 'all' || f.seen.verdict === filter);
+
+  // Buildings the water is pushed into with no way round: the path is drawn across those.
+  function forcedInto(m) {
+    const forced = new Uint8Array(buildingCount + 1);
+    for (let i = 0; i < N; i++) {
+      const r = m.receiver[i];
+      if (!buildingAt[i] && r >= 0 && buildingAt[r] && m.acc[i] >= MIN_AREA) forced[buildingAt[r]] = 1;
+    }
+    return forced;
+  }
+  let forced = forcedInto(model);
+
+  // The grid is axis-aligned in Web Mercator, so cell <-> lat/lng is linear there.
+  const M = L.CRS.EPSG3857;
+  const nw = M.project(bounds.getNorthWest()), se = M.project(bounds.getSouthEast());
+  const cellOf = (latlng) => {
+    const p = M.project(latlng);
+    const x = Math.floor((p.x - nw.x) / (se.x - nw.x) * W);
+    const y = Math.floor((nw.y - p.y) / (nw.y - se.y) * H);
+    return x < 0 || y < 0 || x >= W || y >= H ? -1 : y * W + x;
+  };
+  const pointOf = (x, y) => M.unproject(L.point(nw.x + x / W * (se.x - nw.x), nw.y - y / H * (nw.y - se.y)));
+  const latLngOf = (i) => pointOf((i % W) + 0.5, Math.floor(i / W) + 0.5);
+  const extentOf = (cells) => {
+    let x0 = W, y0 = H, x1 = 0, y1 = 0;
+    for (const i of cells) {
+      const x = i % W, y = Math.floor(i / W);
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+    }
+    return L.latLngBounds(pointOf(x0, y1 + 1), pointOf(x1 + 1, y0));
+  };
+
+  const fmtLen = (m) => m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
+  const fmtArea = (m2) => m2 < 10000 ? `${Math.round(m2).toLocaleString()} m²`
+    : `${(m2 / 1e4).toFixed(m2 < 1e6 ? 1 : 0)} ha`;
+  const fmtDepth = (m) => m < 1 ? `${Math.round(m * 100)} cm` : `${m.toFixed(1)} m`;
+  const count = (n, one, many) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+
+  // ---- the words -----------------------------------------------------------
+  const title = (f) => SEEN[f.seen.verdict].title;
+  const lots = (n) => count(n, 'property', 'properties');
+  const others = (n) => count(n, 'other property', 'other properties');
+
+  // One line on what a solid fence there would do.
+  function why(f) {
+    const r = f.rule, does = [];
+    if (r.pond === 'beyond') does.push(`backs water up onto ${r.pondLots.length ? others(r.pondLots.length) : 'the street'}`);
+    if (r.moved.length) does.push(`reroutes ${does.length ? 'it' : 'water'} across ${lots(r.moved.length)}`);
+    if (does.length) return `If solid, ${does.join(' and ')}`;
+    if (r.pond === 'uphill') return 'If solid, backs water up on the uphill neighbour only';
+    if (r.pond === 'own') return 'If solid, backs water up on its own section only';
+    return 'If solid, water gets round without ponding or changing course';
+  }
+
+  // What the laser saw along the line.
+  function sawText(f) {
+    const s = f.seen;
+    if (!s.open) return s.verdict === 'building'
+      ? 'The whole line runs under a building, which the model already treats as a wall.'
+      : 'The laser scan had no straight run of this line long enough to read.';
+    const pct = `<b>${Math.round(s.along * 100)}%</b>`, high = s.top ? `about <b>${s.top.toFixed(1)} m</b> high` : '';
+    const rest = s.open < s.length ? ` Another ${s.length - s.open} m of the line is a building.` : '';
+    const hidden = s.hidden >= 0.1 ? ` ${Math.round(s.hidden * 100)}% of it is hidden from the laser.` : '';
+    const said = {
+      level: `Something ${high} stands along ${pct} of its ${s.open} m, with an even top. That is what a fence or wall looks like.`,
+      ragged: `Something ${high} stands along ${pct} of its ${s.open} m, but the top is uneven. More likely planting, or a fence with plants over it.`,
+      part: `Something ${high} stands along ${pct} of its ${s.open} m. The rest is open.`,
+      open: s.along ? `The laser found something standing on only ${pct} of its ${s.open} m.` : `The laser found nothing standing along its ${s.open} m.`,
+      hidden: `Most of its ${s.open} m is hidden from the laser.`,
+    }[s.verdict];
+    return said + rest + (s.verdict === 'hidden' ? '' : hidden);
+  }
+
+  // The Plan's tests for a solid fence there, each as [pass | fail | maybe | info, what happens].
+  function tests(f) {
+    const r = f.rule, deep = `<b>${fmtDepth(r.pondDepth)}</b> deep`, out = [];
+    if (r.pond === 'beyond') {
+      const where = [r.pondLots.length && `<b>${others(r.pondLots.length)}</b>`, r.pondStreet && `${r.pondStreet.toLocaleString()} m² of street`].filter(Boolean).join(' and ');
+      out.push(['fail', `<b>Ponding.</b> Water would stand up to ${deep} on ${where}.${r.plan ? ' The rule allows none beyond the fence owner’s boundary.' : ''}`]);
+    } else if (r.pond === 'uphill') {
+      out.push(['maybe', `<b>Ponding.</b> Water would stand up to ${deep} on the uphill neighbour’s land and nowhere else.${r.plan ? ' That breaks the rule only if the downhill neighbour put the fence up.' : ''}`]);
+    } else if (r.pond === 'own') {
+      out.push(['pass', `<b>Ponding.</b> Water would stand up to ${deep} on the section behind the fence and stay there.`]);
+    } else out.push(['pass', `<b>Ponding.</b> No water would stand ${fmtDepth(RULES.pondDepth)} deep anywhere it doesn’t now.`]);
+
+    if (r.moved.length) {
+      const fresh = !f.newParcels ? ''
+        : f.newParcels < r.moved.length ? `, ${f.newParcels} of which ${f.newParcels === 1 ? 'has' : 'have'} no flow path now`
+          : r.moved.length === 1 ? ', which has no flow path now' : ', none of which has a flow path now';
+      out.push(['fail', `<b>Diverting.</b> The flow path would cross <b>${lots(r.moved.length)}</b> at a new place${fresh}.${r.plan ? ' Moving an entry or exit point needs consent.' : ''}`]);
+    } else if (f.newParcels) {
+      out.push(['pass', `<b>Diverting.</b> A few metres of flow path would reach a property that has none now, less than the ${F.minRun} m we count as a move.`]);
+    } else out.push(['pass', `<b>Diverting.</b> The water would ${f.newRun >= F.minRun ? 'shift, but still cross' : 'cross'} every boundary where it does now.`]);
+
+    out.push(r.plan
+      ? ['info', `Rain from <b>${fmtArea(f.area)}</b> of land runs to this spot, over the ${RULES.planArea.toLocaleString()} m² where the rule starts.`]
+      : ['info', `Rain from <b>${fmtArea(f.area)}</b> of land runs to this spot. The Plan’s rule starts at ${RULES.planArea.toLocaleString()} m², so it doesn’t apply here.`]);
+    return out;
+  }
+
+  // How much rain has to run off the land that drains into the pond before it is full.
+  function fillText(f) {
+    const mm = f.rule.fill;
+    if (!mm) return '';
+    return `The water stands that deep once ${mm < 1 ? 'less than 1' : 'about ' + Math.round(mm).toLocaleString()} mm of rain has run off the land that drains into it.`;
+  }
+
+  // ---- map -----------------------------------------------------------------
+  const wide = window.matchMedia('(min-width: 641px)').matches;
+  const panel = document.getElementById('panel');
+  // A phone shows the whole area on a tall, narrow screen, so it needs more room to roam.
+  const map = L.map('map', { zoomControl: false, minZoom: 14, maxZoom: 21, maxBounds: bounds.pad(wide ? 0.5 : 1.5) });
+  if (wide) L.control.zoom({ position: 'bottomright' }).addTo(map);
+  else {
+    // The sheet covers the bottom, so the credits go under the switches at the top.
+    map.attributionControl.setPosition('topright');
+    document.querySelector('.leaflet-top.leaflet-right').style.top = document.getElementById('tools').offsetHeight + 14 + 'px';
+  }
+  const basemaps = {
+    // openstreetmap.org sends "Access blocked" tiles to a page opened from disk, because it
+    // has no web address to give as a referrer. Esri's street map stands in for it there.
+    streets: location.protocol === 'file:'
+      ? L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+        maxNativeZoom: 19, maxZoom: 21, attribution: 'Street map © Esri and its data providers' })
+      : L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxNativeZoom: 19, maxZoom: 21, attribution: '© OpenStreetMap contributors' }),
+    aerial: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxNativeZoom: 19, maxZoom: 21, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics' }),
+  };
+  let basemap = 'streets';
+  basemaps.streets.addTo(map);
+  // Room for the panel: beside the map on a wide screen, under it on a phone.
+  const padding = () => wide
+    ? { paddingTopLeft: [384, 64], paddingBottomRight: [16, 16] }
+    : { paddingTopLeft: [16, 56], paddingBottomRight: [16, panel.offsetHeight + 16] };
+  // Open on the pilot tile, with a line round it.
+  const tile = L.latLngBounds(D.focus.corners);
+  L.polygon(D.focus.corners, { color: getComputedStyle(document.documentElement).getPropertyValue('--ink').trim(), weight: 2, dashArray: '8 6', fill: false, interactive: false }).addTo(map);
+  map.fitBounds(tile, padding());
+  if (map.getZoom() < 16) {
+    // On a narrower window, fill the screen rather than shrink to fit.
+    map.setView(tile.getCenter(), wide ? 16 : 15, { animate: false });
+    map.panBy(wide ? [-184, 0] : [0, window.innerHeight / 4], { animate: false }); // the sheet fills the bottom half
+  }
+
+  // Too many pins to number from far out: they are dots until you zoom in.
+  const nearOrFar = () => map.getContainer().classList.toggle('far', map.getZoom() < 17);
+  map.on('zoomend', nearOrFar);
+  nearOrFar();
+
+  for (const [name, zIndex] of [['shade', 250], ['buildings', 340], ['flow', 350], ['halo', 354], ['fences', 355], ['change', 360]]) {
+    const pane = map.createPane(name);
+    pane.style.zIndex = zIndex;
+    pane.style.pointerEvents = 'none';
+  }
+  map.getPane('shade').style.mixBlendMode = 'multiply';
+
+  // An image overlay backed by a canvas we can redraw in place.
+  const CanvasOverlay = L.ImageOverlay.extend({
+    _initImage() {
+      const c = this._image = this._url;
+      c.classList.add('leaflet-image-layer');
+      if (this._zoomAnimated) c.classList.add('leaflet-zoom-animated');
+    },
+  });
+  const gridCanvas = () => Object.assign(document.createElement('canvas'), { width: W, height: H });
+  const overlay = (canvas, pane, opacity) => new CanvasOverlay(canvas, bounds, { pane, opacity, interactive: false });
+  // Paint a list of cells as squares `w` cells wide.
+  const paint = (ctx, cells, colour, w) => {
+    ctx.fillStyle = colour;
+    const off = (w - 1) / 2;
+    for (const i of cells) ctx.fillRect((i % W) - off, Math.floor(i / W) - off, w, w);
+  };
+
+  // ---- terrain shading -----------------------------------------------------
+  const shadeCanvas = gridCanvas();
+  (function renderShade() {
+    const ctx = shadeCanvas.getContext('2d'), img = ctx.createImageData(W, H), px = img.data;
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < N; i++) { if (z[i] < lo) lo = z[i]; if (z[i] > hi) hi = z[i]; }
+    const exaggerate = 2, alt = Math.PI / 4;
+    const lx = -Math.SQRT1_2 * Math.cos(alt), ly = Math.SQRT1_2 * Math.cos(alt), lz = Math.sin(alt); // sun in the north-west
+    const LOW = [176, 220, 224], MID = [247, 247, 240], HIGH = [240, 220, 186];
+    for (let y = 0; y < H; y++) {
+      const yu = y > 0 ? y - 1 : y, yd = y < H - 1 ? y + 1 : y;
+      for (let x = 0; x < W; x++) {
+        const xl = x > 0 ? x - 1 : x, xr = x < W - 1 ? x + 1 : x;
+        const dzdx = (z[y * W + xr] - z[y * W + xl]) / (xr - xl) * exaggerate;
+        const dzdy = (z[yu * W + x] - z[yd * W + x]) / (yd - yu) * exaggerate;
+        let s = (-dzdx * lx - dzdy * ly + lz) / Math.sqrt(dzdx * dzdx + dzdy * dzdy + 1) / lz;
+        s = Math.max(0.55, Math.min(1, s));
+        const t = (z[y * W + x] - lo) / (hi - lo);
+        const [a, b, f] = t < 0.5 ? [LOW, MID, t * 2] : [MID, HIGH, t * 2 - 1];
+        const o = (y * W + x) * 4;
+        px[o] = (a[0] + (b[0] - a[0]) * f) * s;
+        px[o + 1] = (a[1] + (b[1] - a[1]) * f) * s;
+        px[o + 2] = (a[2] + (b[2] - a[2]) * f) * s;
+        px[o + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+  })();
+  overlay(shadeCanvas, 'shade', 0.75).addTo(map);
+
+  // ---- buildings -----------------------------------------------------------
+  const buildingCanvas = gridCanvas();
+  (function renderBuildings() {
+    const ctx = buildingCanvas.getContext('2d'), img = ctx.createImageData(W, H), px = img.data;
+    for (let i = 0; i < N; i++) if (buildingAt[i]) px.set([93, 102, 117, 130], i * 4);
+    ctx.putImageData(img, 0, 0);
+  })();
+  overlay(buildingCanvas, 'buildings', 0.9).addTo(map);
+
+  // ---- flow paths ----------------------------------------------------------
+  const PALETTES = {
+    streets: ['#74b6ff', '#4a9af6', '#2a7ce6', '#1560cc', '#0b46a6', '#062f7c'],
+    aerial: ['#c4efff', '#9fe4ff', '#78d7ff', '#52caff', '#2cbcff', '#06adff'],
+  };
+  const flowCanvas = gridCanvas();
+  function renderFlow() {
+    const ctx = flowCanvas.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+    const buckets = [[], [], [], [], [], []];
+    for (let i = 0; i < N; i++) {
+      if (acc[i] < MIN_AREA) continue;
+      if (buildingAt[i] && !forced[buildingAt[i]]) continue; // a big roof's own runoff
+      buckets[Math.min(5, Math.floor(Math.log10(acc[i] / MIN_AREA) * 2))].push(i);
+    }
+    buckets.forEach((cells, b) => paint(ctx, cells, PALETTES[basemap][b], 1.6 + b * 0.9));
+  }
+  renderFlow();
+  overlay(flowCanvas, 'flow', 0.92).addTo(map);
+
+  // ---- Council's mapped paths ----------------------------------------------
+  const GROUPS = { 1: '2,000 m² to 4,000 m²', 2: '4,000 m² to 1 ha', 3: '1 ha to 3 ha', 4: '3 ha to 100 ha', 5: '100 ha and above' };
+  const councilLayer = L.layerGroup(D.olfp.map((f) =>
+    L.polyline(f.c.map(([lon, lat]) => [lat, lon]), {
+      color: '#c2188b', weight: 1 + f.g * 0.8, opacity: 0.9, dashArray: '6 5',
+    }).bindTooltip(`Council flow path · rain from ${GROUPS[f.g] || 'an unknown area'}`, { sticky: true })));
+
+  // ---- fence lines ---------------------------------------------------------
+  const css = getComputedStyle(document.documentElement);
+  const cssColour = (name) => css.getPropertyValue(name).trim();
+  const colourOf = (f) => cssColour(SEEN[f.seen.verdict].chip ? '--' + f.seen.verdict : '--none');
+  const INK = cssColour('--ink');
+  const fenceCanvas = gridCanvas(), haloCanvas = gridCanvas();
+  const fenceAt = new Int32Array(N); // which fence line is drawn on each cell, -1 = none
+  overlay(haloCanvas, 'halo', 1).addTo(map);
+  overlay(fenceCanvas, 'fences', 1).addTo(map);
+
+  // Every fence line gets a pin with its number, and the one that is up gets an X beside it.
+  const pins = fences.map((f, k) => {
+    const centre = f.cells.reduce((s, i) => [s[0] + (i % W) + 0.5, s[1] + Math.floor(i / W) + 0.5], [0, 0]);
+    f.at = pointOf(centre[0] / f.cells.length, centre[1] / f.cells.length);
+    return L.marker(f.at, {
+      icon: L.divIcon({ className: 'fence-pin', html: `<b class="v-${f.seen.verdict}">${f.rank}</b>`, iconSize: [24, 24] }),
+      bubblingMouseEvents: false, keyboard: false, zIndexOffset: 1000 - f.rank,
+    }).on('click', () => choose(k))
+      .on('mouseover', () => { overPin = k; hover(k); })
+      .on('mouseout', () => { overPin = -1; hover(-1); });
+  });
+  const closePin = L.marker([0, 0], {
+    icon: L.divIcon({ className: 'fence-x', html: '<button title="Take this fence down" aria-label="Take this fence down">×</button>', iconSize: [26, 26], iconAnchor: [-19, 13] }),
+    bubblingMouseEvents: false, zIndexOffset: 5000,
+  }).on('click', () => choose(-1));
+  const tip = L.tooltip({ direction: 'top', offset: [0, -16], className: 'fence-tip' });
+
+  function renderFences() {
+    const ctx = fenceCanvas.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+    fenceAt.fill(-1);
+    for (let k = fences.length - 1; k >= 0; k--) { // lowest number last, so it ends up on top
+      const f = fences[k];
+      if (!shown(f)) { pins[k].remove(); continue; }
+      if (f.seen.verdict === 'open') paint(ctx, f.cells, INK, 4.2); // a dark edge so white shows on a pale map
+      paint(ctx, f.cells, colourOf(f), 3.4);
+      for (const c of f.cells) fenceAt[c] = k;
+      pins[k].addTo(map);
+    }
+  }
+  renderFences();
+
+  // What the chosen fence changed: water building up, the new route, the old route, the fence.
+  const changeCanvas = gridCanvas();
+  const ROUTE = cssColour('--route'), DRY = '#4b5563', FENCE = '#0d1520';
+  function renderChange() {
+    const ctx = changeCanvas.getContext('2d'), img = ctx.createImageData(W, H), px = img.data;
+    if (diff) {
+      for (let i = 0; i < N; i++) {
+        const rise = skip[i] ? 0 : model.filled[i] - base.filled[i];
+        if (rise < RULES.pondDepth) continue;
+        const o = i * 4;
+        px[o] = 30; px[o + 1] = 110; px[o + 2] = 240;
+        px[o + 3] = 110 + Math.min(1, rise) * 110;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    if (!diff) return;
+    paint(ctx, diff.lost, DRY, 2.6);
+    paint(ctx, diff.gained, ROUTE, 3.4);
+    paint(ctx, fences[chosen].cells, FENCE, 2.6);
+  }
+  overlay(changeCanvas, 'change', 0.95).addTo(map);
+
+  // ---- the list ------------------------------------------------------------
+  const list = document.getElementById('fence-list');
+  list.innerHTML = fences.map((f, k) => {
+    const high = f.seen.top && f.seen.verdict !== 'open' ? ` · ${f.seen.top.toFixed(1)} m high` : '';
+    return `<li data-k="${k}">
+      <div class="row">
+        <button class="pick" aria-expanded="false"><span class="n v-${f.seen.verdict}">${f.rank}</span>
+          <span><strong>${title(f)}${high}</strong><small>${why(f)}</small></span></button>
+        <button class="x" title="Take this fence down" aria-label="Take this fence down">×</button>
+      </div>
+      <div class="more" hidden></div>
+    </li>`;
+  }).join('');
+  const rows = [...list.children];
+
+  // Two rows of chips: what the tests say, then what the laser found. Together they pick the list.
+  const outcomes = document.getElementById('outcomes'), chips = document.getElementById('chips');
+  outcomes.innerHTML = ORDER.map((o) =>
+    `<button data-outcome="${o}">${OUTCOMES[o].chip} <span>${fences.filter((f) => f.rule.outcome === o).length}</span></button>`).join('');
+  function showChips() {
+    for (const b of outcomes.children) b.setAttribute('aria-pressed', b.dataset.outcome === outcome);
+    const mine = fences.filter((f) => f.rule.outcome === outcome);
+    chips.innerHTML = ['all', 'level', 'ragged', 'part', 'open'].map((v) => {
+      const n = v === 'all' ? mine.length : mine.filter((f) => f.seen.verdict === v).length;
+      return `<button data-filter="${v}" aria-pressed="${v === filter}">${v === 'all' ? 'All' : `<i class="v-${v}"></i>${SEEN[v].chip}`} <span>${n}</span></button>`;
+    }).join('');
+  }
+  function refilter() {
+    showChips();
+    rows.forEach((li, k) => { li.hidden = !shown(fences[k]); });
+    renderFences();
+    list.scrollTop = 0;
+    if (chosen >= 0 && !shown(fences[chosen])) choose(-1);
+    else if (chosen >= 0) pins[chosen].getElement().classList.add('active');
+  }
+  outcomes.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b || b.dataset.outcome === outcome) return;
+    outcome = b.dataset.outcome;
+    filter = 'all';
+    refilter();
+  });
+  chips.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b || b.dataset.filter === filter) return;
+    filter = b.dataset.filter;
+    refilter();
+  });
+  refilter();
+
+  function moreHtml(f) {
+    const s = f.seen;
+    const side = s.points ? `<canvas id="profile"></canvas>
+      <div class="key">
+        <span>The ${s.length} m line from the side, one dot per laser point:</span>
+        <span><i class="dot" style="background:#b08050"></i>ground</span>
+        <span><i class="dot" style="background:#2f9e44"></i>plants</span>
+        <span><i class="dot" style="background:#d04040"></i>building</span>
+        <span><i class="dot" style="background:#14202e"></i>other</span>
+        <span><i style="background:#dbe7fb;height:9px"></i>fence height</span>
+      </div>` : '';
+    const view = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${f.at.lat.toFixed(6)},${f.at.lng.toFixed(6)}`;
+    return `<p>${f.street ? 'On the street front.' : 'Between two neighbours.'} ${sawText(f)}</p>
+      ${side}
+      <p class="note">The laser can’t tell solid from see-through. That takes a photo or a visit. <a href="${view}" target="_blank" rel="noopener">Street View nearby ↗</a></p>
+      <h2>If it is a solid fence</h2>
+      <div class="outcome">${OUTCOMES[f.rule.outcome].title}</div>
+      <ul class="tests">${tests(f).map(([mark, text]) => `<li class="${mark}">${text}</li>`).join('')}</ul>
+      <p class="note">${fillText(f)}</p>
+      <div class="key mapkey">
+        <span><i style="background:${ROUTE}"></i>new route</span>
+        <span><i style="background:${DRY}"></i>old route, now dry</span>
+        <span><i style="background:#3d83f0;height:9px"></i>water standing</span>
+      </div>
+      <p class="note wait">Working out where the water goes…</p>`;
+  }
+
+  // Side view: every laser point within 30 cm of the fitted line, as if you stood back and looked at it.
+  const POINT_COLOUR = { 2: '#b08050', 3: '#2f9e44', 4: '#2f9e44', 5: '#2f9e44', 6: '#d04040' };
+  function drawProfile(f) {
+    const canvas = document.getElementById('profile');
+    if (!canvas) return;
+    const s = f.seen, dpr = window.devicePixelRatio || 1;
+    const width = canvas.clientWidth, top = 4.5, bottom = -0.5;
+    // Heights are drawn large enough to read. A long line is squeezed sideways to fit.
+    const rise = 22, scale = Math.min(width / s.length, rise), height = (top - bottom) * rise;
+    canvas.style.height = height + 'px';
+    canvas.width = width * dpr; canvas.height = height * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    const x = (m) => (width - s.length * scale) / 2 + m * scale, y = (m) => (top - m) / (top - bottom) * height;
+    ctx.fillStyle = 'rgba(20, 102, 224, 0.09)'; // the heights that count
+    ctx.fillRect(0, y(LIDAR.high), width, y(LIDAR.low) - y(LIDAR.high));
+    ctx.strokeStyle = '#c9d2dc'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, y(0) + 0.5); ctx.lineTo(width, y(0) + 0.5); ctx.stroke();
+    ctx.fillStyle = '#5b6b7c'; ctx.font = '10px -apple-system, sans-serif';
+    for (const m of [1, 2, 3, 4]) ctx.fillText(`${m} m`, 3, y(m) + 3);
+    for (const [along, up, cls] of s.points) {
+      ctx.fillStyle = POINT_COLOUR[cls] || '#14202e';
+      ctx.beginPath(); ctx.arc(x(along), y(up), 1.5, 0, 2 * Math.PI); ctx.fill();
+    }
+  }
+
+  // Open one row and mark its pin, or close them all with -1.
+  function mark(was) {
+    if (was >= 0) {
+      rows[was].classList.remove('active', 'busy');
+      rows[was].querySelector('.pick').setAttribute('aria-expanded', false);
+      Object.assign(rows[was].querySelector('.more'), { hidden: true, innerHTML: '' });
+      pins[was].getElement()?.classList.remove('active');
+      pins[was].setZIndexOffset(1000 - fences[was].rank);
+    }
+    if (chosen < 0) { closePin.remove(); return; }
+    const f = fences[chosen], li = rows[chosen];
+    li.classList.add('active', 'busy');
+    li.querySelector('.pick').setAttribute('aria-expanded', true);
+    Object.assign(li.querySelector('.more'), { hidden: false, innerHTML: moreHtml(f) });
+    drawProfile(f);
+    li.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    pins[chosen].getElement().classList.add('active');
+    pins[chosen].setZIndexOffset(4000);
+    closePin.setLatLng(f.at).addTo(map);
+  }
+
+  // Stand one fence up (or none, with -1) and run the water again.
+  let runs = 0;
+  function choose(k) {
+    if (k === chosen) return;
+    const was = chosen, run = ++runs;
+    if (was >= 0) for (const c of fences[was].cells) { walls[c] = 0; skip[c] = 0; }
+    chosen = k;
+    hover(-1);
+    mark(was);
+    history.replaceState(null, '', k < 0 ? location.pathname + location.search : `#${fences[k].rank}`);
+    setTimeout(() => { // the row opens straight away, the water takes a moment
+      if (run !== runs) return;
+      if (k < 0) { model = base; diff = null; } else {
+        for (const c of fences[k].cells) { walls[c] = F.height; skip[c] = 1; }
+        model = Flow.compute(z, W, H, walls);
+        diff = Flow.changes(base, model, W, H, MIN_AREA, F.near, skip);
+      }
+      ({ receiver, slope, acc } = model);
+      forced = forcedInto(model);
+      renderFlow();
+      renderChange();
+      clearDrop();
+      clearRain();
+      parts.forEach(spawn);
+      if (k < 0) return;
+      rows[k].classList.remove('busy');
+      const pond = [];
+      for (let i = 0; i < N; i++) if (!skip[i] && model.filled[i] - base.filled[i] >= RULES.pondDepth) pond.push(i);
+      map.flyToBounds(extentOf([...fences[k].cells, ...diff.gained, ...diff.lost, ...pond]).pad(0.25), { ...padding(), maxZoom: 18, duration: 0.7 });
+    }, 30);
+  }
+
+  list.addEventListener('click', (e) => {
+    const li = e.target.closest('#fence-list > li');
+    if (!li) return;
+    const k = +li.dataset.k;
+    if (e.target.closest('.x')) choose(-1);
+    else if (e.target.closest('.pick')) choose(k === chosen ? -1 : k);
+  });
+  list.addEventListener('mouseover', (e) => {
+    const li = e.target.closest('#fence-list > li');
+    hover(li ? +li.dataset.k : -1);
+  });
+  list.addEventListener('mouseleave', () => hover(-1));
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (dropping) setDropping(false); else choose(-1);
+  });
+
+  // ---- pointing at a fence line --------------------------------------------
+  // The nearest fence line to a point on the map, if one is within a finger's width of it.
+  const GRAB = window.matchMedia('(pointer: coarse)').matches ? 16 : 8; // pixels
+  function fenceNear(latlng) {
+    const i = cellOf(latlng);
+    if (i < 0) return -1;
+    const pixelsPerCell = (map.latLngToContainerPoint(bounds.getSouthEast()).x - map.latLngToContainerPoint(bounds.getNorthWest()).x) / W;
+    const reach = Math.max(1, Math.min(40, Math.round(GRAB / pixelsPerCell)));
+    const cx = i % W, cy = Math.floor(i / W);
+    let best = -1, bestDist = reach * reach + 1;
+    for (let y = Math.max(0, cy - reach); y <= Math.min(H - 1, cy + reach); y++) {
+      for (let x = Math.max(0, cx - reach); x <= Math.min(W - 1, cx + reach); x++) {
+        const k = fenceAt[y * W + x], d = (x - cx) ** 2 + (y - cy) ** 2;
+        if (k >= 0 && (d < bestDist || (d === bestDist && k < best))) { best = k; bestDist = d; }
+      }
+    }
+    return best;
+  }
+
+  // Light one up, on the map and in the list, wherever the pointer is.
+  function hover(k) {
+    if (k === hovered) return;
+    if (hovered >= 0) {
+      rows[hovered].classList.remove('hover');
+      pins[hovered].getElement()?.classList.remove('hover');
+    }
+    hovered = k;
+    const ctx = haloCanvas.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+    map.getContainer().classList.toggle('over-fence', k >= 0);
+    map.closeTooltip(tip);
+    if (k < 0) return;
+    const f = fences[k];
+    paint(ctx, f.cells, INK, 7.5);
+    rows[k].classList.add('hover');
+    pins[k].getElement()?.classList.add('hover');
+    if (k !== chosen) map.openTooltip(tip.setLatLng(f.at).setContent(`<b>${f.rank} · ${title(f)}</b><br>${why(f)}`));
+  }
+  map.on('mousemove', (e) => hover(overPin >= 0 ? overPin : dropping ? -1 : fenceNear(e.latlng)));
+  map.on('mouseout', () => { if (overPin < 0) hover(-1); });
+  map.on('click', (e) => {
+    if (dropping) {
+      const i = cellOf(e.latlng);
+      if (i >= 0) drop(i);
+      return;
+    }
+    const k = fenceNear(e.latlng);
+    if (k >= 0) choose(k);
+  });
+
+  // ---- one drop ------------------------------------------------------------
+  // With "Drop water" on, a click on the map follows one drop downhill instead of picking a fence.
+  // The list still picks one, so you can drop water with a fence up.
+  const ghostLine = L.polyline([], { color: '#2b3442', weight: 2.5, opacity: 0.85, dashArray: '4 7', interactive: false }).addTo(map);
+  const dropCasing = L.polyline([], { color: '#fff', weight: 7, opacity: 0.95, interactive: false }).addTo(map);
+  const dropLine = L.polyline([], { color: '#ff7a1a', weight: 3.5, interactive: false }).addTo(map);
+  const dropHead = L.circleMarker([0, 0], { radius: 6, color: '#fff', weight: 2, fillColor: '#ff7a1a', fillOpacity: 1, interactive: false });
+  const dropNote = document.getElementById('drop-note'), dropBtn = document.getElementById('btn-drop');
+  const DROP_HINT = 'Click anywhere on the map to drop water there';
+  let dropping = false, dropAnim = 0;
+  function clearDrop() {
+    cancelAnimationFrame(dropAnim);
+    for (const line of [ghostLine, dropCasing, dropLine]) line.setLatLngs([]);
+    dropHead.remove();
+    dropNote.textContent = DROP_HINT;
+  }
+  function setDropping(on) {
+    dropping = on;
+    dropBtn.setAttribute('aria-pressed', on);
+    map.getContainer().classList.toggle('dropping', on);
+    dropNote.hidden = !on;
+    clearDrop();
+    hover(-1);
+  }
+  dropBtn.addEventListener('click', () => setDropping(!dropping));
+
+  function drop(start) {
+    const path = Flow.trace(receiver, start);
+    let length = 0, joinAfter = null;
+    for (let k = 1; k < path.length; k++) {
+      const a = path[k - 1], b = path[k];
+      length += (a % W !== b % W && Math.floor(a / W) !== Math.floor(b / W)) ? Math.SQRT2 : 1;
+      if (joinAfter === null && acc[b] >= MIN_AREA) joinAfter = length;
+    }
+    const end = path[path.length - 1];
+    const said = [`<b>${fmtLen(length)} ${z[end] < 0.5 ? 'to the sea' : 'to the edge of the map'}</b>`, `falls ${(z[start] - z[end]).toFixed(0)} m`];
+    if (acc[start] >= MIN_AREA) said.push('starts on a flow path');
+    else if (joinAfter !== null) said.push(`joins a flow path after ${fmtLen(joinAfter)}`);
+    else said.push('never joins a flow path');
+    // Dashed line: where the same drop goes with the fence down.
+    const before = chosen < 0 ? path : Flow.trace(base.receiver, start);
+    const moved = before.length !== path.length || before.some((c, k) => c !== path[k]);
+    ghostLine.setLatLngs(moved ? before.map(latLngOf) : []);
+    if (chosen >= 0) said.push(moved ? 'dashed line is the way it goes without the fence' : 'the fence makes no difference to this drop');
+    dropNote.innerHTML = said.join(' · ');
+
+    const pts = path.map(latLngOf);
+    const duration = Math.max(1200, Math.min(6000, length * 4));
+    const t0 = performance.now();
+    cancelAnimationFrame(dropAnim);
+    dropHead.addTo(map);
+    (function frame(now) {
+      const p = Math.min(1, (now - t0) / duration);
+      const k = Math.max(1, Math.round(p * (pts.length - 1)));
+      const shown = pts.slice(0, k + 1);
+      dropCasing.setLatLngs(shown);
+      dropLine.setLatLngs(shown);
+      dropHead.setLatLng(pts[Math.min(k, pts.length - 1)]);
+      if (p < 1) dropAnim = requestAnimationFrame(frame);
+    })(t0);
+  }
+
+  // ---- rain ----------------------------------------------------------------
+  const rainCanvas = Object.assign(document.createElement('canvas'), { id: 'rain' });
+  map.getContainer().appendChild(rainCanvas);
+  const rctx = rainCanvas.getContext('2d');
+  const RAIN_COLOUR = { streets: 'rgba(16, 84, 214, 0.8)', aerial: 'rgba(190, 236, 255, 0.95)' };
+  const parts = Array.from({ length: 4000 }, () => ({ i: 0, t: 0, age: 0, life: 0, sx: NaN, sy: NaN }));
+  let raining = true, view = { x0: 0, y0: 0, x1: W, y1: H }, lastFrame = 0;
+
+  function sizeRain() {
+    const { x, y } = map.getSize(), dpr = window.devicePixelRatio || 1;
+    rainCanvas.width = x * dpr; rainCanvas.height = y * dpr;
+    rainCanvas.style.width = x + 'px'; rainCanvas.style.height = y + 'px';
+    rctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  function clearRain() {
+    rctx.clearRect(0, 0, rainCanvas.width, rainCanvas.height);
+    for (const p of parts) p.sx = NaN;
+  }
+  function spawn(p) {
+    // Mostly rain on what's in view, with some from further up the hill.
+    const v = Math.random() < 0.65 ? view : { x0: 0, y0: 0, x1: W, y1: H };
+    const x = Math.floor(v.x0 + Math.random() * (v.x1 - v.x0));
+    const y = Math.floor(v.y0 + Math.random() * (v.y1 - v.y0));
+    p.i = y * W + x; p.t = 0; p.age = 0; p.life = 5 + Math.random() * 14; p.sx = NaN;
+  }
+  parts.forEach(spawn);
+
+  function rainFrame(now) {
+    requestAnimationFrame(rainFrame);
+    const dt = Math.min(0.05, (now - lastFrame) / 1000);
+    lastFrame = now;
+    if (!raining) return;
+
+    const tl = map.latLngToContainerPoint(bounds.getNorthWest());
+    const br = map.latLngToContainerPoint(bounds.getSouthEast());
+    const kx = (br.x - tl.x) / W, ky = (br.y - tl.y) / H;
+    const size = map.getSize();
+    const clamp = (v, hi) => Math.max(0, Math.min(hi, v));
+    view = { x0: clamp(-tl.x / kx, W - 1), y0: clamp(-tl.y / ky, H - 1), x1: clamp((size.x - tl.x) / kx, W), y1: clamp((size.y - tl.y) / ky, H) };
+
+    rctx.globalCompositeOperation = 'destination-out';
+    rctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
+    rctx.fillRect(0, 0, size.x, size.y);
+    rctx.globalCompositeOperation = 'source-over';
+
+    const strokes = [new Path2D(), new Path2D(), new Path2D()];
+    for (const p of parts) {
+      p.age += dt;
+      if (receiver[p.i] < 0 || p.age > p.life) { spawn(p); continue; }
+      // Faster on steeper ground. Sped up a lot: this is a cartoon, not a clock.
+      p.t += (10 + 120 * Math.sqrt(slope[p.i])) * dt;
+      while (p.t >= 1 && receiver[p.i] >= 0) { p.i = receiver[p.i]; p.t -= 1; }
+      const r = receiver[p.i] >= 0 ? receiver[p.i] : p.i, f = Math.min(1, p.t);
+      const cx = (p.i % W) + 0.5, cy = Math.floor(p.i / W) + 0.5;
+      const x = tl.x + (cx + ((r % W) + 0.5 - cx) * f) * kx;
+      const y = tl.y + (cy + (Math.floor(r / W) + 0.5 - cy) * f) * ky;
+      if (!Number.isNaN(p.sx) && (x > -20 && y > -20 && x < size.x + 20 && y < size.y + 20)) {
+        const s = strokes[acc[p.i] > 20000 ? 2 : acc[p.i] > MIN_AREA ? 1 : 0];
+        s.moveTo(p.sx, p.sy); s.lineTo(x, y);
+      }
+      p.sx = x; p.sy = y;
+    }
+    rctx.strokeStyle = RAIN_COLOUR[basemap];
+    rctx.lineCap = 'round';
+    strokes.forEach((s, k) => { rctx.lineWidth = 1.1 + k * 0.7; rctx.stroke(s); });
+  }
+  sizeRain();
+  map.on('resize', () => { sizeRain(); clearRain(); });
+  map.on('move', clearRain);
+  map.on('zoomstart', () => { rainCanvas.style.visibility = 'hidden'; });
+  map.on('zoomend', () => { clearRain(); rainCanvas.style.visibility = ''; });
+  requestAnimationFrame(rainFrame);
+
+  // ---- map switches --------------------------------------------------------
+  const rainBtn = document.getElementById('btn-rain');
+  rainBtn.addEventListener('click', () => {
+    raining = !raining;
+    rainBtn.setAttribute('aria-pressed', raining);
+    clearRain();
+  });
+  const councilBtn = document.getElementById('btn-council');
+  councilBtn.addEventListener('click', () => {
+    const on = !map.hasLayer(councilLayer);
+    on ? councilLayer.addTo(map) : councilLayer.remove();
+    councilBtn.setAttribute('aria-pressed', on);
+  });
+  for (const name of ['streets', 'aerial']) {
+    document.getElementById('b-' + name).addEventListener('click', () => {
+      if (basemap === name) return;
+      basemaps[basemap].remove();
+      basemap = name;
+      basemaps[name].addTo(map);
+      for (const n of ['streets', 'aerial']) document.getElementById('b-' + n).setAttribute('aria-pressed', n === name);
+      renderFlow();
+      clearRain();
+    });
+  }
+
+  // ---- the numbers in the words --------------------------------------------
+  const put = (id, text) => { document.getElementById(id).textContent = text; };
+  put('s-tile', D.focus.name);
+  // How the 4,000 m² line does here, counted as in the idea page: right when it covers a fence
+  // that does harm or leaves alone one that doesn't, wrong when it covers one that doesn't,
+  // missed when it leaves out one that does, and can't say when the water stands only uphill.
+  const harm = (r) => r.pond === 'beyond' || r.moved.length ? 'harm' : r.pond === 'uphill' ? 'depends' : 'none';
+  const four = { right: 0, wrong: 0, missed: 0, cant: 0 };
+  for (const { rule: r } of fences) {
+    const h = harm(r);
+    four[h === 'depends' ? 'cant' : h === 'harm' ? (r.plan ? 'right' : 'missed') : r.plan ? 'wrong' : 'right']++;
+  }
+  const pc = (n) => `${n} (${Math.round(n / fences.length * 100)}%)`;
+  put('s-four', `Against all ${fences.length} fence lines here, the ${RULES.planArea.toLocaleString()} m² line is right on ${pc(four.right)}, wrong on ${pc(four.wrong)}, misses ${pc(four.missed)} and can’t say on ${pc(four.cant)}.`);
+  put('s-plan', fences.filter((f) => f.rule.plan).length.toLocaleString());
+  put('s-consent', fences.filter((f) => f.rule.outcome === 'consent').length);
+  put('a-plan', RULES.planArea.toLocaleString());
+  put('a-height', F.height);
+  put('a-pond', RULES.pondDepth * 100);
+  put('a-pondarea', RULES.pondArea);
+  put('a-near', F.near);
+  for (const k of ['low', 'high']) put('a-' + k, LIDAR[k]);
+  put('sources', `Points: ${LIDAR.source}. Terrain: ${D.source.dem}. Buildings: ${D.source.buildings}. Boundaries: LINZ NZ Primary Parcels. Council paths: ${D.source.olfp}.`);
+
+  document.getElementById('loading').remove();
+  // A link like indexv7.html#3 opens with fence 3 up, whichever list it is in.
+  const linked = fences.findIndex((f) => f.rank === parseInt(location.hash.slice(1), 10));
+  if (linked >= 0) {
+    if (fences[linked].rule.outcome !== outcome) { outcome = fences[linked].rule.outcome; refilter(); }
+    choose(linked);
+  }
+}
+</script>
+</body>
+</html>

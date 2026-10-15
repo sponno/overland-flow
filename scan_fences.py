@@ -4,7 +4,7 @@
 # ///
 """Is anything standing there? Look along every tested boundary in the LiDAR point cloud.
 
-  uv run scan_fences.py
+  uv run scan_fences.py      (AREA=mtalbert for another area, as in fetch_data.py)
 
 Needs data.js and fences.js (run rank_fences.js first). Downloads the 2024 point cloud
 tiles for the area into lidar/ and keeps them there for next time, then writes lidar.js.
@@ -37,7 +37,7 @@ from shapely import line_merge
 from shapely.geometry import LineString, MultiLineString, shape
 from shapely.ops import transform as reproject
 
-from fetch_data import DEM_BASE, SHEET_ROWS, arcgis_features
+from fetch_data import DEM_BASE, OUT, SHEET_ROWS, arcgis_features
 from fetch_parcels import PARCELS_URL
 
 HERE = Path(__file__).parent
@@ -60,7 +60,7 @@ VERDICTS = ["level", "ragged", "part", "open", "hidden", "building", "none"]
 
 
 def load_js(name):
-    text = (HERE / name).read_text()
+    text = (OUT / name).read_text()
     return json.loads(text[text.index("{"):text.rindex("}") + 1])
 
 
@@ -267,7 +267,7 @@ def main():
 
     # A side view is kept for the fences the pages open one at a time: those that reroute water
     # onto a new property (v3), and those that would need consent (test_rules.js, if it has run).
-    rules = load_js("rules.js")["fences"] if (HERE / "rules.js").exists() else [{}] * len(fences)
+    rules = load_js("rules.js")["fences"] if (OUT / "rules.js").exists() else [{}] * len(fences)
     results = [scan(segs, points, height, index, profile=f["grade"] == 2 or r.get("outcome") == "consent")
                if segs else {"verdict": "none"} for f, r, segs in zip(fences, rules, lines)]
     control = [scan(segs, points, height, index) for segs in controls if segs]
@@ -287,7 +287,7 @@ def main():
         # One entry per fence, in the same order as fences.js.
         "fences": results,
     }
-    path = HERE / "lidar.js"
+    path = OUT / "lidar.js"
     path.write_text("globalThis.LIDAR_DATA = " + json.dumps(out, separators=(",", ":")) + ";\n")
     print("wrote", path, f"{path.stat().st_size / 1e6:.1f} MB")
 

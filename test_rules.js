@@ -11,6 +11,7 @@
 // 4,000 m² of land. Council maps flow paths from 2,000 m², so some of ours fall short.
 //
 //   node test_rules.js      needs data.js, parcels.js and fences.js, writes rules.js
+//   AREA=mtalbert node test_rules.js      the same for another area's folder
 //
 // rules.js lines up with fences.js entry for entry. Rule numbers are from Council's
 // practice note RC 3.2.18 (February 2020). Nothing here is a legal opinion.
@@ -18,9 +19,11 @@ const { Worker, isMainThread, parentPort, workerData } = require('worker_threads
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-require('./data.js');
-require('./parcels.js');
-require('./fences.js');
+// AREA=mtalbert reads and writes that area's folder instead, as in fetch_data.py.
+const DIR = path.join(__dirname, process.env.AREA || '');
+require(path.join(DIR, 'data.js'));
+require(path.join(DIR, 'parcels.js'));
+require(path.join(DIR, 'fences.js'));
 const Flow = require('./flow.js');
 
 const PLAN_AREA = 4000;  // m², the Plan's own definition of an overland flow path
@@ -176,7 +179,7 @@ async function main() {
   console.log('ponding', tally(rules, 'pond'), 'moved', rules.filter((r) => r.moved.length).length);
 
   const out = { planArea: PLAN_AREA, pondDepth: POND_DEPTH, pondArea: POND_AREA, entryRun: ENTRY_RUN, counts, fences: rules };
-  const file = path.join(__dirname, 'rules.js');
+  const file = path.join(DIR, 'rules.js');
   fs.writeFileSync(file, 'globalThis.RULE_DATA = ' + JSON.stringify(out) + ';\n');
   console.log('wrote', file, (fs.statSync(file).size / 1e6).toFixed(2), 'MB');
 }
