@@ -66,10 +66,25 @@
     <span class="what">What actually stands on each of the 101 fence lines in the Mt Albert tile, from the aerial photo and Street View, so we can score our detection. Random order: the first 50 are a fair sample. Lines 1 to 10 are done, so start at 11. Download the CSV when done and send it to John.</span>
   </a>
 
+  <a class="version" href="indexv10.html">
+    <img src="thumbs/v10.jpg" alt="The Mt Albert starter tile with fence lines: red where the laser and aerial photo together say fence or wall, green hedge, amber can't tell, white nothing standing">
+    <div>
+      <div class="num">Version 10<span class="latest">Latest</span></div>
+      <h2>Fences from laser and photo</h2>
+      <dl>
+        <dt>What changed</dt>
+        <dd>Computer vision on the 7.5 cm aerial photo joins the laser: each line is judged in 6 m pieces on three measurements (unclassified laser points, how thin the standing thing is, and how sharp a straight edge holds in the photo). Records follow Healthy Waters’ memo, with an evidence picture for every line.</dd>
+        <dt>What it showed</dt>
+        <dd>All 9 lines people checked by eye come out right, including 3 fences hidden by planting that v8 missed. Against 76 AI-labelled lines, 84% of lines with a fence are found and 13% of high-confidence fence calls are wrong.</dd>
+      </dl>
+      <span class="open">Open version 10 →</span>
+    </div>
+  </a>
+
   <a class="version" href="indexv9.html">
     <img src="thumbs/v9.jpg" alt="The Mt Albert starter tile with coloured fence lines, beside a panel with a third row of filters headed Since 2016: same 77, taller 9, lower 7, more standing 1, less standing 4">
     <div>
-      <div class="num">Version 9<span class="latest">Latest</span></div>
+      <div class="num">Version 9</div>
       <h2>What changed since 2016</h2>
       <dl>
         <dt>What changed</dt>

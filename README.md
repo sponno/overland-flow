@@ -7,6 +7,7 @@ fences change where overland flood water goes, and Auckland Council has no data 
 
 | Version | What it adds | Link |
 | --- | --- | --- |
+| v10 | Fences from laser and photo: computer vision on the 7.5 cm aerial photo with the laser, in 6 m pieces, records in the memo's fields | https://sponno.github.io/overland-flow/indexv10.html |
 | v9 | What changed since 2016: the same scan on the 2016 laser survey, line by line | https://sponno.github.io/overland-flow/indexv9.html |
 | v8 | What stands on each line: fence or wall, hedge, can't tell or nothing, exported as GeoJSON in the brief's fields | https://sponno.github.io/overland-flow/indexv8.html |
 | v7 | Mt Albert pilot tile: the v6 model and tests moved to the hackathon's starter tile, BA31_1000_4245 | https://sponno.github.io/overland-flow/indexv7.html |
@@ -118,12 +119,18 @@ are new: each fence says which boundary it was in v3 to v5.
 | `indexv6.html` | v6, every fence line against the Unitary Plan's two tests. |
 | `indexv7.html` | v7, v6 on the Mt Albert starter tile. Reads its data from `mtalbert/`. |
 | `indexv8.html` | v8, v7 with each fence line sorted by what stands on it, and the GeoJSON download. |
-| `indexv9.html` | v9, v8 with what changed on each line since the 2016 laser survey. Start here. |
+| `indexv9.html` | v9, v8 with what changed on each line since the 2016 laser survey. |
+| `indexv10.html` | v10, fences from the laser and the aerial photo together, with an evidence picture per line. Start here. |
+| `CV.md` | The computer vision work for v10: what was tried, what worked, the numbers and the caveats. |
 | `check.html` | Checking fence lines by eye: each Mt Albert fence line on the aerial photo with Street View and 3D links, answered in the brief's own words (structure, continuity, height, permeability), our laser's answer hidden. Answers stay in the browser until downloaded as CSV or GeoJSON. |
 | `make_sample.py` | Puts the fence lines in a fixed random order with their LINZ boundary lines and writes `sample.js` for `check.html`: `AREA=mtalbert uv run make_sample.py`. |
 | `mtalbert/` | `data.js`, `parcels.js`, `fences.js`, `rules.js`, `lidar.js`, `sample.js` and `structures.js` for Mt Albert, made by the same scripts with `AREA=mtalbert`. |
 | `mtalbert/structures.geojson` | The output for Council: one record per fence line in the fields the brief asks for (id, geometry, structure type, source and date, height, continuity, permeability, flow path, influence, confidence, review status, limitations), plus the LINZ parcel ids either side. Not authoritative. |
 | `fetch_aerial.py`, `mtalbert/aerial/`, `mtalbert/aerial.js` | The 2024 7.5 cm aerial photo for the pilot tile, cut into web map tiles (zoom 16 to 20, 3.5 MB) so v9 and `check.html` show it under the lines when Aerial is on: `AREA=mtalbert uv run fetch_aerial.py`. Downloads the 75 MB photo into `lidar/aerial/` (not committed). |
+| `evidence.py`, `cv_features.py` | The evidence for a line (photo, infrared, laser, building outlines) on one grid along it, and the measurements read from it. |
+| `make_chips.py`, `mtalbert/chips/` | One evidence picture per line: photo, infrared, laser from above and from the side. |
+| `classify_cv.py`, `mtalbert/detected.js`, `mtalbert/detected.geojson` | v10's sort in 6 m pieces, and its output in the fields of Healthy Waters' memo (structure type, primary class, three confidences, flow-path relationship against Council's paths, review status, limitations, evidence picture). Not authoritative. |
+| `mtalbert/reference/claude_labels.csv` | **AI-made labels.** All 101 lines labelled by Claude from the evidence pictures, unchecked. Used to fit and develop `classify_cv.py`, never as its score. |
 | `mtalbert/checks/` | Hand checks downloaded from `check.html`, one CSV and GeoJSON per person. `classify_fences.py` scores against every CSV here. |
 | `classify_fences.py` | The sort. Reads the point classes and Council's infrared photo at the points `scan_fences.py` finds standing on each line, sorts each line into fence or wall, vegetation, uncertain or none, and writes `structures.js` and `structures.geojson`. Caches the infrared tiles in `lidar/infrared/`. Also scans every line in the 2016 survey (v9) and records what changed. |
 | `thumbs/` | Screenshots for the version list. |
@@ -191,7 +198,13 @@ AREA=mtalbert node test_rules.js
 AREA=mtalbert uv run scan_fences.py
 AREA=mtalbert uv run classify_fences.py
 AREA=mtalbert uv run fetch_aerial.py
+AREA=mtalbert uv run make_chips.py
+AREA=mtalbert uv run classify_cv.py
 ```
+
+`classify_cv.py` (v10) downloads the aerial photo tiles around the area (75 MB each, into
+`lidar/aerial/`) and the building outlines the first time, then takes about a minute and
+a half.
 
 `classify_fences.py` (v8, v9) reuses the 2024 point cloud tiles, downloads about 300
 small infrared tiles and four 2016 point cloud tiles (about 120 MB) the first time, and
@@ -341,6 +354,19 @@ From the 2016 comparison in v9, on the same 103 lines:
   brightness, returns per pulse, how deep the standing thing is across the line, and the
   2016 survey's own classes, which file most fences as vegetation.
 
+From the computer vision in v10 (details in `CV.md`):
+
+- Against the 9 lines people checked by eye, all 9 come out right, including 3 fences
+  hidden by planting that v8 called hedge or couldn't call. That is too few to be a score,
+  and one setting was chosen with one of them in view.
+- Against 76 lines labelled by Claude (AI-made, unchecked, fitted without each line): 26 of
+  31 lines with a fence found (84%); 9 of 35 fence calls wrong (26%), 3 of 23 at high
+  confidence (13%). The memo proposes 80% and 15%.
+- 46 of the 103 lines have a fence or wall along at least part of them, 13 are hedge, 37
+  can't tell (mostly under trees), 7 have nothing standing.
+- On lines 4 m off every boundary it calls a fence on 25%. Not yet checked how many are
+  real.
+
 ## What the model ignores
 
 - No real fences, kerbs or stormwater pipes. Water moves to the lowest neighbouring square
@@ -356,6 +382,8 @@ From the 2016 comparison in v9, on the same 103 lines:
 - The sort in v8 calls anything unclassified "built", which includes cars, sheds and
   trampolines. A fence buried in a hedge reads as plants. Its cut-offs (20% unclassified,
   10 points, the infrared green index) are ours. Permeability is unknown for every line.
+- v10 fits on AI-made labels that only see from above. Cars read as built. Fence and wall,
+  and solid and see-through, can't be told apart.
 - Shared boundaries longer than 200 m are left out of the fence test.
 - The rule test in v6 calls it ponding when water stands 10 cm or deeper over 5 m² or more
   of a property, and a moved crossing when the flow path crosses a boundary more than 5 m

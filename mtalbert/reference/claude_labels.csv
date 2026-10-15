@@ -1,0 +1,102 @@
+fence,structure,secondary,permeability,sure,note
+0,trees,none,unknown,fairly,tree canopy over the west half; open kerb/footpath edge on the east half
+1,hedge,fence,unknown,fairly,clipped hedge band full length with shadow; unclassified laser points mid-way suggest a fence inside
+2,hedge,,unknown,fairly,overgrown climbers or hedge the whole way; may hide a fence
+3,building,hedge,unknown,fairly,garage walls run along the boundary; shrubs at both ends
+4,hedge,,unknown,sure,clipped hedge the whole length
+5,trees,,unknown,guess,canopy covers everything; can't see the ground
+7,unknown,trees,unknown,guess,canopy at both ends and house eaves mid-way; a few unclassified laser points could be a fence underneath
+8,trees,building,unknown,guess,canopy and roofs over most of it
+9,hedge,none,unknown,fairly,shrubs and hedge in clumps with gaps along a street front
+10,hedge,building,unknown,fairly,clipped hedge on the west half; house wall along the middle; trees east
+11,trees,,unknown,fairly,one big shrub or tree over the whole line
+12,fence,,solid,sure,straight fence line with a continuous dark shadow the whole length; leaves over the west end
+15,hedge,building,unknown,sure,clipped hedge band along most of it; house wall mid-way
+16,fence,,solid,sure,white-topped fence with an unbroken shadow the whole length
+17,trees,building,unknown,fairly,shrubs and canopy; a shed roof on part of it
+18,other,trees,solid,guess,canopy on the west half; east half is a low white kerb or edging along a driveway (laser points only near the ground)
+19,none,,unknown,sure,open lawn and garden with a couple of loose shrubs
+20,trees,,unknown,guess,canopy over most of it; an unclassified cluster mid-way could be a shed or trampoline
+21,trees,,unknown,guess,street front under canopy and shrubs; can't see whether a fence is under
+22,hedge,none,unknown,fairly,street front: hedge along the west half; shrubs and open driveways east; cars parked inside
+23,fence,trees,solid,fairly,thin fence line with dark shadow on the east half; canopy over the west half
+26,hedge,building,unknown,guess,garden shrubs along most of it; house wall on the west part
+27,hedge,none,unknown,fairly,hedge on the west half with a few unclassified points inside it; open by the road to the east
+28,trees,fence,unknown,fairly,shrubs and canopy west; house wall mid-way; a fence about 1 m high on the east part
+29,fence,trees,solid,sure,straight fence about 1.8 m beside a driveway with an unbroken shadow; canopy at both ends
+30,trees,,unknown,fairly,116 m mostly under canopy
+31,fence,none,unknown,fairly,thin low fence line along the edge of a large paved court for two thirds; scrub and open ground on the west third
+32,none,,unknown,fairly,open lawn; shrubs only at the ends
+33,fence,none,solid,fairly,fence with shadow on the east half; driveway and open ground west
+34,trees,none,unknown,guess,shrubs and canopy at both ends; open driveway in between; a garage eave runs near it
+35,hedge,building,unknown,fairly,hedge and shrubs on one side and a house eave on the other; a few unclassified points along it
+36,fence,none,unknown,guess,low fence or wall about 0.5 m on the west part; open driveway east; shrubs at the end
+37,hedge,,unknown,sure,dense hedge the whole length
+38,trees,building,unknown,guess,canopy west; shrubs and sheds east; a wall or fence runs parallel about 3.5 m north of the line
+39,hedge,building,unknown,guess,garage on the west part; east part has a thin even-topped green line about 1.8 m high: a trimmed hedge or a fence with a climber
+40,trees,building,unknown,fairly,canopy over most of it; a roof edge at the west end
+41,trees,,unknown,fairly,canopy; the laser barely reaches the ground
+42,trees,,unknown,fairly,dense canopy the whole way
+43,trees,fence,unknown,guess,canopy and sheds; an unclassified line about 1.5 m high on the east part may be a fence
+44,fence,,unknown,fairly,low white front fence or wall about 1 m between footpath and lawn
+45,hedge,trees,unknown,fairly,trimmed hedge with an even top about 1.6 m and a tree at the east end
+46,trees,building,unknown,fairly,canopy and shrubs; a house eave mid-way
+47,hedge,building,unknown,fairly,continuous strip of shrubs and hedge; house eaves along the middle; canopy at the ends
+48,fence,hedge,solid,sure,fence 1 to 1.8 m with an unbroken shadow; hedge at the east end
+49,unknown,building,unknown,guess,shrubs west; house and garage edges with eaves about 2 m along the rest; a dark shadow band could be a fence between the houses
+50,trees,,unknown,fairly,shrubs and canopy
+51,trees,,unknown,guess,canopy; a thin line of vegetation points along the middle could be a fence with climbers
+52,none,trees,unknown,fairly,mostly open lawn; shrubs at the west end and a palm
+53,none,trees,unknown,fairly,open lawn through the middle; canopy at the west end and a house at the east; a faint dark line with no laser points is edging at most
+55,fence,,permeable,sure,white post-and-rail or picket front fence under 1 m; sparse laser points through it
+56,gate,none,permeable,guess,street front with two driveways and pillars or gate posts; garden between
+57,hedge,fence,unknown,sure,low clipped front hedge about 0.9 m with posts at the ends
+58,fence,hedge,unknown,fairly,front fence with regular pillars; planting right behind it
+59,hedge,fence,unknown,guess,front hedge and a tree; a thin white line along part of it may be a low picket fence
+60,trees,,unknown,fairly,canopy
+61,hedge,fence,unknown,fairly,street front: low hedge between white pillars; a carport at the west end; posts east
+62,hedge,building,unknown,fairly,shrubs west; house eaves mid-way; clipped hedge row east
+63,hedge,,unknown,sure,big clipped hedge the whole way
+64,fence,hedge,unknown,guess,street front: a low dark fence or wall by the driveway; large clipped hedge at the east end
+65,none,fence,unknown,fairly,street front: open driveway with a parked car; a low fence about 0.5 m at the west end; shrub east
+67,trees,,unknown,fairly,canopy and shrubs; a shed under the west part
+69,trees,building,unknown,fairly,canopy and palms; a house along the middle
+70,fence,hedge,unknown,fairly,street front: low fence or wall under 1 m along the middle; palm west and shrubs east
+71,fence,hedge,unknown,fairly,street front: low white fence or wall either side of a driveway gap; shrubs at the ends
+73,hedge,fence,unknown,sure,long clipped hedge on the east two thirds; a fence about 1 m and a tree on the west third
+75,trees,none,unknown,guess,5 m stub across a driveway with one tree
+76,building,trees,unknown,fairly,garage or carport roof along the middle; shrubs west and trees east; a thin dark shadow on the west part may be a fence
+77,trees,,unknown,fairly,shrubs and canopy
+78,none,fence,unknown,fairly,street front: low planting and paving; only posts at the ends stand up
+79,fence,trees,unknown,guess,a thin line about 1 m along the pool edge (likely a pool fence) between palms and shrubs
+80,hedge,building,unknown,fairly,street front: shrubs and hedge; a garage at the east end
+81,fence,building,solid,sure,fence 1 to 1.5 m with an unbroken shadow on the west half; house eaves mid-way; tree east
+83,hedge,none,unknown,guess,street front: shrubs in clumps with low garden between; parked cars nearby
+84,none,,unknown,guess,3 m stub on a footpath; posts at most
+85,fence,trees,unknown,fairly,a white-topped fence about 1 m on the east half; a tree over the west half
+86,trees,fence,unknown,guess,canopy and shrubs; an unclassified line about 1 m on the west part may be a fence; driveway with cars east
+87,fence,trees,solid,sure,long fence 1 to 1.8 m showing as a thin top line with shadow along the west two thirds; canopy east
+88,hedge,building,unknown,sure,clipped hedge about 1.6 m along most of it; a garage at the east end
+89,trees,building,unknown,fairly,shrubs and canopy; a building at the east end
+90,hedge,,unknown,guess,7 m of shrubs
+91,building,,unknown,guess,3 m stub at a roof edge and driveway
+92,trees,,unknown,fairly,canopy; posts at the west end
+93,trees,,unknown,fairly,canopy and shrubs the whole way
+95,fence,trees,solid,sure,fence about 1.6 m with an unbroken shadow along the west two thirds beside a house; canopy east
+96,none,trees,unknown,fairly,open lawn and patio along the middle; canopy west and hedge east; a fence runs parallel about 3.5 m off
+97,none,hedge,unknown,guess,driveway and garden edge; shrubs in clumps; a building at the west end
+98,none,,unknown,sure,road and kerb edge; two shrubs
+99,none,,unknown,fairly,open driveway; shrubs at both ends
+100,fence,hedge,unknown,fairly,thin fence about 0.8 to 1 m along most of it; shrubs at the east end
+101,trees,,unknown,fairly,shrubs and canopy; a parked car beside it
+102,fence,trees,unknown,fairly,thin fence about 1 m on the east half; shrubs west
+6,fence,building,unknown,guess,garage along the west half; a thin dark fence line by the shrubs east (labelled after seeing the hand check)
+13,hedge,,unknown,sure,wide clipped hedge the whole way (labelled after seeing the hand check)
+14,fence,trees,permeable,sure,white picket fence; a tree over the west end (labelled after seeing the hand check)
+24,unknown,trees,unknown,guess,canopy over most of it; a straight grey line in the photo could be a wall top (labelled after seeing the hand check)
+25,fence,,solid,sure,fence about 0.9 m with a dark line and shadow the whole way (labelled after seeing the hand check)
+54,trees,,unknown,fairly,canopy (labelled after seeing the hand check)
+66,unknown,building,unknown,guess,house eaves and shrubs along it; no clear fence line in the photo (labelled after seeing the hand check)
+68,fence,hedge,unknown,fairly,straight line with plants on it and unclassified points about 1.5 m (labelled after seeing the hand check)
+72,trees,,unknown,fairly,canopy (labelled after seeing the hand check)
+74,hedge,building,unknown,fairly,shrubs along it; a house at the middle (labelled after seeing the hand check)
