@@ -114,7 +114,8 @@
 </aside>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="mtalbert/sample.js"></script>
+<script src="mtalbert/sample.js?v=9c"></script>
+<script src="mtalbert/aerial.js?v=9c"></script>
 <script>
 const S = SAMPLE_DATA, items = S.items;
 const STORE = 'overland-check:mtalbert';
@@ -143,8 +144,14 @@ const wide = matchMedia('(min-width: 641px)').matches;
 const map = L.map('map', { zoomControl: false, maxZoom: 21 });
 if (wide) L.control.zoom({ position: 'bottomleft' }).addTo(map);
 const basemaps = {
-  aerial: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    maxNativeZoom: 19, maxZoom: 21, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics' }),
+  // Esri's photo everywhere, with the 2024 7.5 cm photo over the pilot tile (fetch_aerial.py).
+  aerial: L.layerGroup([
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxNativeZoom: 19, maxZoom: 21, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics' }),
+    L.tileLayer('mtalbert/' + AERIAL_DATA.tiles, {
+      bounds: AERIAL_DATA.bounds, minNativeZoom: AERIAL_DATA.minZoom, maxNativeZoom: AERIAL_DATA.maxZoom, maxZoom: 21,
+      zIndex: 2, attribution: AERIAL_DATA.attribution }),
+  ]),
   streets: location.protocol === 'file:'
     ? L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
       maxNativeZoom: 19, maxZoom: 21, attribution: 'Street map © Esri and its data providers' })

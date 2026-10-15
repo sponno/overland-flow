@@ -1,0 +1,1 @@
+globalThis.AERIAL_DATA = {"tiles": "aerial/{z}/{x}/{y}.webp", "bounds": [[-36.8917265782517, 174.71826055375112], [-36.885160996856186, 174.72379063492843]], "minZoom": 16, "maxZoom": 20, "attribution": "Aerial 2024-25 \u00a9 LINZ, Aerial Surveys Ltd, Auckland Council, CC BY 4.0"};

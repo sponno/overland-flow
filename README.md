@@ -123,6 +123,7 @@ are new: each fence says which boundary it was in v3 to v5.
 | `make_sample.py` | Puts the fence lines in a fixed random order with their LINZ boundary lines and writes `sample.js` for `check.html`: `AREA=mtalbert uv run make_sample.py`. |
 | `mtalbert/` | `data.js`, `parcels.js`, `fences.js`, `rules.js`, `lidar.js`, `sample.js` and `structures.js` for Mt Albert, made by the same scripts with `AREA=mtalbert`. |
 | `mtalbert/structures.geojson` | The output for Council: one record per fence line in the fields the brief asks for (id, geometry, structure type, source and date, height, continuity, permeability, flow path, influence, confidence, review status, limitations), plus the LINZ parcel ids either side. Not authoritative. |
+| `fetch_aerial.py`, `mtalbert/aerial/`, `mtalbert/aerial.js` | The 2024 7.5 cm aerial photo for the pilot tile, cut into web map tiles (zoom 16 to 20, 3.5 MB) so v9 and `check.html` show it under the lines when Aerial is on: `AREA=mtalbert uv run fetch_aerial.py`. Downloads the 75 MB photo into `lidar/aerial/` (not committed). |
 | `mtalbert/checks/` | Hand checks downloaded from `check.html`, one CSV and GeoJSON per person. `classify_fences.py` scores against every CSV here. |
 | `classify_fences.py` | The sort. Reads the point classes and Council's infrared photo at the points `scan_fences.py` finds standing on each line, sorts each line into fence or wall, vegetation, uncertain or none, and writes `structures.js` and `structures.geojson`. Caches the infrared tiles in `lidar/infrared/`. Also scans every line in the 2016 survey (v9) and records what changed. |
 | `thumbs/` | Screenshots for the version list. |
@@ -189,6 +190,7 @@ AREA=mtalbert node rank_fences.js
 AREA=mtalbert node test_rules.js
 AREA=mtalbert uv run scan_fences.py
 AREA=mtalbert uv run classify_fences.py
+AREA=mtalbert uv run fetch_aerial.py
 ```
 
 `classify_fences.py` (v8, v9) reuses the 2024 point cloud tiles, downloads about 300
@@ -207,6 +209,7 @@ takes a few minutes. After that, about two.
 | Overland Flow Paths | Auckland Council: `https://services1.arcgis.com/n4yPwebTjJCmXB6W/arcgis/rest/services/Overland_Flow_Paths/FeatureServer/0` | "Creative Commons (refer to Healthy Waters)". Credit: WSP; Auckland Council Healthy Waters, Geospatial |
 | Auckland North LiDAR point cloud (2016-18), for v9 | OpenTopography open bucket, no key: `https://opentopography.s3.sdsc.edu/pc-bulk/NZ16_NAuckland/CL3_<sheet>_2016_1000_<row><col>.laz` | Published by LINZ, whose elevation data is CC BY 4.0. Not checked for this survey |
 | Auckland North LiDAR 1m DEM (2016-18), for v9's heights | LINZ open bucket: `s3://nz-elevation/auckland/auckland-north_2016-2018/dem_1m/2193/` | CC BY 4.0, Toitū Te Whenua LINZ |
+| Auckland 0.075 m urban aerial photos 2024-25, shown under the lines in v9 and `check.html` | LINZ open bucket, no key: `https://nz-imagery.s3.ap-southeast-2.amazonaws.com/auckland/auckland_2024_0.075m/rgb/2193/<tile>.tiff` | CC BY 4.0. Credit: LINZ, Aerial Surveys Ltd, Auckland Council |
 | Colour infrared aerial photos 2024-25 (near infrared, green, blue), 15 cm tiles | Auckland Council tiled map service, no key: `https://tiles.arcgis.com/tiles/n4yPwebTjJCmXB6W/arcgis/rest/services/AucklandInfraredImagery2024/MapServer` | CC BY 4.0. Credit: © Auckland Council & Aerial Surveys Ltd |
 | Basemaps (loaded live, not stored here) | OpenStreetMap, or Esri World Street Map when a page is opened from disk; Esri World Imagery | As credited on the map |
 
