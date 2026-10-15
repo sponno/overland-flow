@@ -224,7 +224,9 @@ def main():
         features.append({"type": "Feature", "geometry": {"type": "MultiLineString", "coordinates": drawn} if drawn else None,
                          "properties": props})
         eye = EYE[check["structure"]] if check else None
-        rows.append({**{k: v for k, v in props.items() if k != "source"}, "eye": eye})
+        # The page draws the line itself, as lat, lng pairs.
+        rows.append({**{k: v for k, v in props.items() if k != "source"}, "eye": eye,
+                     "line": [[[a[1], a[0]], [b[1], b[0]]] for a, b in drawn]})
 
     control, control_change = [], []
     for segs in controls:

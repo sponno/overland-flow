@@ -195,6 +195,7 @@
   <button id="btn-rain" aria-pressed="true">Rain</button>
   <button id="btn-drop" aria-pressed="false">Drop water</button>
   <button id="btn-council" aria-pressed="false">Council’s flow paths</button>
+  <button id="btn-lines" aria-pressed="true" title="Show or hide the fence lines (H)">Fence lines</button>
 </div>
 
 <aside id="panel">
@@ -494,7 +495,7 @@ function init() {
   map.on('zoomend', nearOrFar);
   nearOrFar();
 
-  for (const [name, zIndex] of [['shade', 250], ['buildings', 340], ['flow', 350], ['halo', 354], ['fences', 355], ['change', 360]]) {
+  for (const [name, zIndex] of [['shade', 250], ['buildings', 340], ['flow', 350], ['halo', 354], ['fences', 355], ['change', 360], ['chosen', 365]]) {
     const pane = map.createPane(name);
     pane.style.zIndex = zIndex;
     pane.style.pointerEvents = 'none';
@@ -589,10 +590,20 @@ function init() {
   const cssColour = (name) => css.getPropertyValue(name).trim();
   const colourOf = (f) => cssColour({ fence: '--fence', plants: '--plants', unsure: '--unsure', open: '--open' }[typeOf(f).key] || '--none');
   const INK = cssColour('--ink');
-  const fenceCanvas = gridCanvas(), haloCanvas = gridCanvas();
-  const fenceAt = new Int32Array(N); // which fence line is drawn on each cell, -1 = none
-  overlay(haloCanvas, 'halo', 1).addTo(map);
+  const fenceAt = new Int32Array(N); // which fence line is on each cell, -1 = none: for pointing at one
+  // Each line is drawn thin along its LINZ boundary, so you can see what is under it. The two
+  // lines LINZ has no shared boundary for are painted on the model's grid instead.
+  const LINE = 2.5; // pixels
+  const fenceCanvas = gridCanvas();
   overlay(fenceCanvas, 'fences', 1).addTo(map);
+  const lineLayer = L.layerGroup().addTo(map);
+  const drawn = fences.map((f) => f.s.line.length ? L.layerGroup([
+    ...(typeOf(f).key === 'open' ? [L.polyline(f.s.line, { pane: 'fences', color: INK, weight: LINE + 2, interactive: false })] : []), // so white shows on a pale map
+    L.polyline(f.s.line, { pane: 'fences', color: colourOf(f), weight: LINE, interactive: false }),
+  ]) : null);
+  const halo = L.polyline([], { pane: 'halo', color: INK, weight: LINE + 8, opacity: 0.3, interactive: false }).addTo(map);
+  const chosenLine = L.polyline([], { pane: 'chosen', color: '#0d1520', weight: LINE + 1.5, interactive: false }).addTo(map);
+  let showLines = true;
 
   // Every fence line gets a pin with its number, and the one that is up gets an X beside it.
   const pins = fences.map((f, k) => {
@@ -615,11 +626,11 @@ function init() {
     const ctx = fenceCanvas.getContext('2d');
     ctx.clearRect(0, 0, W, H);
     fenceAt.fill(-1);
+    lineLayer.clearLayers();
     for (let k = fences.length - 1; k >= 0; k--) { // lowest number last, so it ends up on top
       const f = fences[k];
-      if (!shown(f)) { pins[k].remove(); continue; }
-      if (typeOf(f).key === 'open') paint(ctx, f.cells, INK, 4.2); // a dark edge so white shows on a pale map
-      paint(ctx, f.cells, colourOf(f), 3.4);
+      if (!shown(f) || !showLines) { pins[k].remove(); continue; }
+      if (drawn[k]) lineLayer.addLayer(drawn[k]); else paint(ctx, f.cells, colourOf(f), 1);
       for (const c of f.cells) fenceAt[c] = k;
       pins[k].addTo(map);
     }
@@ -641,10 +652,12 @@ function init() {
       }
     }
     ctx.putImageData(img, 0, 0);
+    const up = diff && showLines ? fences[chosen] : null;
+    chosenLine.setLatLngs(up ? up.s.line : []);
     if (!diff) return;
     paint(ctx, diff.lost, DRY, 2.6);
     paint(ctx, diff.gained, ROUTE, 3.4);
-    paint(ctx, fences[chosen].cells, FENCE, 2.6);
+    if (up && !up.s.line.length) paint(ctx, up.cells, FENCE, 1);
   }
   overlay(changeCanvas, 'change', 0.95).addTo(map);
 
@@ -878,13 +891,11 @@ function init() {
       pins[hovered].getElement()?.classList.remove('hover');
     }
     hovered = k;
-    const ctx = haloCanvas.getContext('2d');
-    ctx.clearRect(0, 0, W, H);
+    halo.setLatLngs(k >= 0 ? fences[k].s.line : []);
     map.getContainer().classList.toggle('over-fence', k >= 0);
     map.closeTooltip(tip);
     if (k < 0) return;
     const f = fences[k];
-    paint(ctx, f.cells, INK, 7.5);
     rows[k].classList.add('hover');
     pins[k].getElement()?.classList.add('hover');
     if (k !== chosen) map.openTooltip(tip.setLatLng(f.at).setContent(`<b>${f.rank} · ${title(f)}</b><br>${why(f)}`));
@@ -1042,6 +1053,20 @@ function init() {
     raining = !raining;
     rainBtn.setAttribute('aria-pressed', raining);
     clearRain();
+  });
+  // Hide the lines and pins to see what is under them. H does the same.
+  const linesBtn = document.getElementById('btn-lines');
+  function setLines(on) {
+    showLines = on;
+    linesBtn.setAttribute('aria-pressed', on);
+    hover(-1);
+    renderFences();
+    renderChange();
+    if (chosen >= 0 && on) pins[chosen].getElement()?.classList.add('active');
+  }
+  linesBtn.addEventListener('click', () => setLines(!showLines));
+  document.addEventListener('keydown', (e) => {
+    if (e.key.toLowerCase() === 'h' && !e.metaKey && !e.ctrlKey && !e.altKey) setLines(!showLines);
   });
   const councilBtn = document.getElementById('btn-council');
   councilBtn.addEventListener('click', () => {
