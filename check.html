@@ -29,6 +29,10 @@
   .sub b { color: var(--ink); }
   .who { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
   .who input { flex: 1; font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; }
+  .who input.need { border-color: #e03131; box-shadow: 0 0 0 3px rgba(224, 49, 49, 0.15); }
+  .by { margin: -4px 0 8px; font-size: 13px; }
+  .by:empty { display: none; }
+  .by .open { color: #9c6b00; }
   .item { border-top: 1px solid var(--line); padding-top: 12px; }
   .item h2 { font-size: 16px; margin: 0; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
   .item h2 span { font-size: 13px; font-weight: 400; color: var(--muted); white-space: nowrap; }
@@ -53,10 +57,13 @@
   #grid button { font: 10px/1 -apple-system, sans-serif; color: var(--muted); aspect-ratio: 1; border: 1px solid var(--line); border-radius: 4px; background: #fff; cursor: pointer; padding: 0; }
   #grid button.first { border-color: #9aa8b6; }
   #grid button.done { background: var(--done); border-color: var(--done); color: #fff; }
+  #grid button.taken { background: #fff3bf; border-color: #f0c000; color: var(--ink); }
   #grid button.now { outline: 2px solid var(--ink); outline-offset: 1px; }
   .save { display: flex; gap: 8px; margin-top: 12px; }
   .save button { flex: 1; font: inherit; font-size: 13px; padding: 7px; border-radius: 8px; border: 1px solid #c9d2dc; background: var(--soft); cursor: pointer; }
   .foot { margin: 12px 0 0; font-size: 12px; color: var(--muted); }
+  .status { margin: 10px 0 0; font-size: 13px; }
+  .status.off { color: #c92a2a; }
   .foot a { color: var(--muted); }
   #tools { position: fixed; top: 16px; left: 16px; z-index: 1000; display: flex; background: #fff; border-radius: 10px; box-shadow: 0 2px 10px rgba(20, 32, 46, 0.18); overflow: hidden; }
   #tools button { font: inherit; font-weight: 600; border: 0; background: #fff; padding: 7px 12px; cursor: pointer; }
@@ -81,6 +88,7 @@
   <section class="item">
     <h2><b id="title-n"></b><span id="count"></span></h2>
     <p class="meta" id="meta"></p>
+    <p class="by" id="by"></p>
     <div class="look">
       <a id="sv" target="_blank" rel="noopener">Street View ↗</a>
       <a id="earth" target="_blank" rel="noopener">3D view ↗</a>
@@ -103,13 +111,14 @@
   </section>
 
   <section class="progress">
-    <p><b id="done-n">0</b> of <span id="total"></span> checked. The outlined squares are the first 50.</p>
+    <p><b id="done-n">0</b> of <span id="total"></span> checked by the team. The outlined squares are the first 50; yellow ones someone has open.</p>
     <div id="grid"></div>
     <div class="save">
       <button id="csv">Download CSV</button>
       <button id="geojson">Download GeoJSON</button>
     </div>
-    <p class="foot">Answers stay in this browser until you download them. Send the file to John. Keys: ← and → to move, H to hide the lines. <a href="index.html">All versions</a></p>
+    <p class="status" id="status">Connecting to the team’s answers…</p>
+    <p class="foot">Answers save for the whole team as you go, under your name. Next skips lines already checked or open on someone else’s screen. The downloads hold everyone’s answers. Keys: ← and → to move, H to hide the lines. <a href="index.html">All versions</a></p>
   </section>
 </aside>
 
@@ -119,6 +128,9 @@
 <script>
 const S = SAMPLE_DATA, items = S.items;
 const STORE = 'overland-check:mtalbert';
+// The team's answers live in a small database behind a Cloudflare Worker (checks-api/).
+const API = 'https://overland-checks.john-647.workers.dev';
+const byFence = Object.fromEntries(items.map((item) => [item.fence, item]));
 
 // The answers, in the words of the brief's output fields where it has them.
 const QUESTIONS = {
@@ -134,10 +146,18 @@ const QUESTIONS = {
 // Browser storage can be missing or blocked: then answers last until the page closes.
 const load = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
 const keep = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} };
-const answers = load(STORE, {}); // by fence index in fences.js
+const answers = load(STORE, {}); // the team's, by fence index in fences.js; this browser's copy
+const unsent = load(STORE + ':unsent', {}); // answers made here that the team copy doesn't have yet
+let looking = []; // who has which line open: [{ fence, by, at }]
+let online = null;
 const nameBox = document.getElementById('name');
+const me = () => nameBox.value.trim();
 nameBox.value = load(STORE + ':name', '');
-nameBox.addEventListener('input', () => keep(STORE + ':name', nameBox.value.trim()));
+nameBox.addEventListener('input', () => {
+  keep(STORE + ':name', me());
+  nameBox.classList.remove('need');
+});
+nameBox.addEventListener('change', () => claim());
 
 // ---- map ---------------------------------------------------------------------
 const wide = matchMedia('(min-width: 641px)').matches;
@@ -210,6 +230,12 @@ const it = () => items[at];
 const mine = () => answers[it().fence] || {};
 
 function answer(q, value) {
+  if (!me()) {
+    nameBox.classList.add('need');
+    nameBox.placeholder = 'put your name in first';
+    nameBox.focus();
+    return;
+  }
   const a = { ...mine() };
   if (a.structure === 'none' && ['along', 'height', 'water'].includes(q)) return;
   if (QUESTIONS[q].multi) {
@@ -223,14 +249,94 @@ function answer(q, value) {
   paint();
 }
 
-function save(a) {
-  a.by = nameBox.value.trim();
+function save(a, wait = 0) {
+  const fence = it().fence;
+  a.by = me();
   a.at = new Date().toISOString();
-  answers[it().fence] = a;
+  answers[fence] = unsent[fence] = a;
   keep(STORE, answers);
+  keep(STORE + ':unsent', unsent);
+  send(fence, wait);
+}
+
+// ---- the team copy -----------------------------------------------------------------
+const call = async (path, options = {}) => {
+  const r = await fetch(`${API}${path}${path.includes('?') ? '&' : '?'}tile=${S.tile}`, {
+    cache: 'no-store', ...options, headers: { 'Content-Type': 'application/json' } });
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+};
+const fromServer = (row) => ({ ...Object.fromEntries(Object.entries(row).map(([k, v]) => [k, v ?? undefined])),
+  seen: row.seen ? row.seen.split('+') : [] });
+
+const timers = {};
+function send(fence, wait = 0) {
+  clearTimeout(timers[fence]);
+  timers[fence] = setTimeout(async () => {
+    const a = unsent[fence], item = byFence[fence];
+    if (!a || !item) return;
+    try {
+      const row = await call(`/checks?fence=${fence}`, { method: 'PUT', body: JSON.stringify({
+        n: item.n, parcel_a: item.between[0], parcel_b: item.between[1], street_front: item.street,
+        length_m: item.length, lat: item.centre[0], lon: item.centre[1], ...a }) });
+      // Unless it changed again while this was on its way.
+      if (unsent[fence] === a) {
+        delete unsent[fence];
+        answers[fence] = fromServer(row);
+      }
+      online = true;
+    } catch { online = false; }
+    keep(STORE, answers);
+    keep(STORE + ':unsent', unsent);
+    status();
+  }, wait);
+}
+
+async function sync() {
+  try {
+    const data = await call('/checks');
+    const team = Object.fromEntries(data.answers.map((row) => [row.fence, fromServer(row)]));
+    // Answers made in this browser before there was a team copy go up once.
+    for (const [fence, a] of Object.entries(answers)) if (!team[fence] && a.structure && byFence[fence]) unsent[fence] ??= { ...a, by: a.by || me() };
+    for (const fence of Object.keys(unsent)) {
+      team[fence] = unsent[fence];
+      send(fence);
+    }
+    for (const fence of Object.keys(answers)) delete answers[fence];
+    Object.assign(answers, team);
+    keep(STORE, answers);
+    looking = data.looking;
+    online = true;
+    if (Date.now() - claimed > 60000) claim();
+  } catch { online = false; }
+  paint();
+}
+
+let claimed = Infinity; // set when the first line is shown
+function claim() {
+  if (!me() || !items.length) return;
+  claimed = Date.now();
+  call(`/looking?fence=${it().fence}`, { method: 'POST', body: JSON.stringify({ by: me() }) }).catch(() => {});
+}
+const openBy = (item) => looking.filter((l) => l.fence === item.fence && l.by && l.by !== me()).map((l) => l.by);
+
+function status() {
+  const el = document.getElementById('status');
+  const waiting = Object.keys(unsent).length;
+  const people = new Set([...looking.map((l) => l.by).filter(Boolean), me()].filter(Boolean)).size;
+  el.classList.toggle('off', online === false);
+  el.textContent = online === false
+    ? `Can’t reach the team’s answers. ${waiting ? `${waiting} kept in this browser; they go up` : 'Answers will go up'} when it’s back.`
+    : online === null ? 'Connecting to the team’s answers…'
+    : waiting ? 'Saving…'
+    : `Saved for the team.${people > 1 ? ` ${people} people checking now.` : ''}`;
 }
 
 const isDone = (item) => !!(answers[item.fence] || {}).structure;
+const when = (at) => {
+  const d = new Date(at), today = d.toDateString() === new Date().toDateString();
+  return d.toLocaleString([], today ? { hour: 'numeric', minute: '2-digit' } : { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+};
 
 function paint() {
   const a = mine();
@@ -241,13 +347,33 @@ function paint() {
       b.setAttribute('aria-pressed', multi ? (a[q] || []).includes(b.dataset.value) : a[q] === b.dataset.value);
     }
   }
-  document.getElementById('note').value = a.note || '';
+  const note = document.getElementById('note');
+  if (note.value !== (a.note || '')) note.value = a.note || '';
+  const them = openBy(it());
+  document.getElementById('by').innerHTML = [
+    a.structure ? `Checked by ${esc(a.by || 'someone')}, ${when(a.at)}.` : '',
+    them.length ? `<span class="open">${esc(them.join(' and '))} ${them.length > 1 ? 'have' : 'has'} this open now.</span>` : '',
+  ].join(' ').trim();
   const done = items.filter(isDone).length;
   document.getElementById('done-n').textContent = done;
   document.querySelectorAll('#grid button').forEach((b, k) => {
+    const open = openBy(items[k]);
     b.classList.toggle('done', isDone(items[k]));
+    b.classList.toggle('taken', !isDone(items[k]) && open.length > 0);
     b.classList.toggle('now', k === at);
+    b.title = `Fence line ${items[k].n}${isDone(items[k]) ? `, checked by ${answers[items[k].fence].by || 'someone'}` : open.length ? `, open on ${open.join(' and ')}’s screen` : ''}`;
   });
+  status();
+}
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+// The next line nobody has checked or has open, after k.
+function free(k) {
+  for (let j = 0; j < items.length; j++) {
+    const i = (k + j + items.length) % items.length;
+    if (!isDone(items[i]) && !openBy(items[i]).length) return i;
+  }
+  return k;
 }
 
 function show(k) {
@@ -267,17 +393,21 @@ function show(k) {
   others.forEach((line, j) => line.setStyle({ opacity: j === at ? 0 : 0.45 }));
   goTo();
   paint();
+  claim();
 }
 
-document.getElementById('note').addEventListener('input', (e) => save({ ...mine(), note: e.target.value }));
+document.getElementById('note').addEventListener('input', (e) => {
+  if (!me()) return answer('note');
+  save({ ...mine(), note: e.target.value }, 800);
+});
 function goTo() { map.fitBounds(L.latLngBounds(around(it().lines).flat()), { ...padding(), maxZoom: 20 }); }
 document.getElementById('zoom').addEventListener('click', goTo);
 document.getElementById('hide').addEventListener('click', () => hide(!hidden));
 document.getElementById('prev').addEventListener('click', () => show(at - 1));
-document.getElementById('next').addEventListener('click', () => show(at + 1));
+document.getElementById('next').addEventListener('click', () => show(free(at + 1)));
 addEventListener('keydown', (e) => {
   if (e.target.matches('input, textarea')) return;
-  if (e.key === 'ArrowRight') show(at + 1);
+  if (e.key === 'ArrowRight') show(free(at + 1));
   if (e.key === 'ArrowLeft') show(at - 1);
   if (e.key === 'h' || e.key === 'H') hide(!hidden);
 });
@@ -286,7 +416,6 @@ const grid = document.getElementById('grid');
 items.forEach((item, k) => {
   const b = document.createElement('button');
   b.textContent = item.n;
-  b.title = `Fence line ${item.n}`;
   if (item.n <= 50) b.classList.add('first');
   b.addEventListener('click', () => show(k));
   grid.append(b);
@@ -298,7 +427,7 @@ document.getElementById('tile').textContent = S.tile;
 const FIELDS = ['structure', 'along', 'height', 'water', 'seen', 'sure', 'note', 'by', 'at'];
 const rows = () => items.filter(isDone).map((item) => ({ item, a: answers[item.fence] }));
 const value = (a, f) => Array.isArray(a[f]) ? a[f].join('+') : a[f] ?? '';
-const fileName = (ext) => `check-${S.tile}-${(nameBox.value.trim() || 'someone').replace(/\W+/g, '-').toLowerCase()}.${ext}`;
+const fileName = (ext) => `check-${S.tile}-team.${ext}`;
 
 function download(text, name, type) {
   const url = URL.createObjectURL(new Blob([text], { type }));
@@ -324,9 +453,11 @@ document.getElementById('geojson').addEventListener('click', () => {
   download(JSON.stringify({ type: 'FeatureCollection', features }), fileName('geojson'), 'application/geo+json');
 });
 
-// Start at the first one not yet checked.
-const first = items.findIndex((item) => !isDone(item));
-show(first >= 0 ? first : 0);
+// Start at the first line nobody has checked or has open, once the team's answers are in.
+const ready = Promise.race([sync(), new Promise((r) => setTimeout(r, 4000))]);
+ready.then(() => show(free(0)));
+setInterval(sync, 15000);
+addEventListener('focus', sync);
 </script>
 </body>
 </html>
