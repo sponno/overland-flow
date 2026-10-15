@@ -82,6 +82,7 @@ def main():
     points, _ = read_points([s for segs in lines + controls for s in segs])
     height = points[:, 2] - ground_under(points, grid["source"]["tiles"])
     ir, west, north = infrared(points)
+    tile = grid.get("focus", {}).get("name", "area")
     folder = OUT / "chips"
     folder.mkdir(exist_ok=True)
     for k, segs in enumerate(lines):
@@ -92,7 +93,8 @@ def main():
         keep = (along >= frame.start) & (along <= frame.end) & (np.abs(across) <= ACROSS)
         rgba = aerial_in(frame)
         nir = infrared_in(frame, ir, west, north, IR_PIXEL)
-        title = f"Line {k} · {frame.end - frame.start - 4:.0f} m · photo, infrared, laser from above, laser from the side"
+        length = sum(float(np.hypot(*(q - p))) for p, q in segs)
+        title = f"{tile}-{k:03d} · {length:.0f} m · photo, infrared, laser from above, laser from the side"
         chip(frame, rgba, nir, along[keep], across[keep], height[keep], points[keep, 3], title).save(folder / f"{k:03d}.jpg", quality=85)
     print(f"wrote {len(list(folder.glob('*.jpg')))} chips into {folder}")
 

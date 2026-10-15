@@ -7,6 +7,7 @@ fences change where overland flood water goes, and Auckland Council has no data 
 
 | Version | What it adds | Link |
 | --- | --- | --- |
+| v11 | Fences on flow paths: v10 without the planning-rule framing, and the chosen line in its own panel | https://sponno.github.io/overland-flow/indexv11.html |
 | v10 | Fences from laser and photo: computer vision on the 7.5 cm aerial photo with the laser, in 6 m pieces, records in the memo's fields | https://sponno.github.io/overland-flow/indexv10.html |
 | v9 | What changed since 2016: the same scan on the 2016 laser survey, line by line | https://sponno.github.io/overland-flow/indexv9.html |
 | v8 | What stands on each line: fence or wall, hedge, can't tell or nothing, exported as GeoJSON in the brief's fields | https://sponno.github.io/overland-flow/indexv8.html |
@@ -120,7 +121,8 @@ are new: each fence says which boundary it was in v3 to v5.
 | `indexv7.html` | v7, v6 on the Mt Albert starter tile. Reads its data from `mtalbert/`. |
 | `indexv8.html` | v8, v7 with each fence line sorted by what stands on it, and the GeoJSON download. |
 | `indexv9.html` | v9, v8 with what changed on each line since the 2016 laser survey. |
-| `indexv10.html` | v10, fences from the laser and the aerial photo together, with an evidence picture per line. Start here. |
+| `indexv10.html` | v10, fences from the laser and the aerial photo together, with an evidence picture per line. |
+| `indexv11.html` | v11, v10 with the chosen line in its own panel on the right and no planning-rule framing. Start here. |
 | `CV.md` | The computer vision work for v10: what was tried, what worked, the numbers and the caveats. |
 | `check.html` | Checking fence lines by eye: each Mt Albert fence line on the aerial photo with Street View and 3D links, answered in the brief's own words (structure, continuity, height, permeability), our laser's answer hidden. Answers stay in the browser until downloaded as CSV or GeoJSON. |
 | `make_sample.py` | Puts the fence lines in a fixed random order with their LINZ boundary lines and writes `sample.js` for `check.html`: `AREA=mtalbert uv run make_sample.py`. |
