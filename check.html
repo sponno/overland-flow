@@ -34,6 +34,7 @@
   .item h2 span { font-size: 13px; font-weight: 400; color: var(--muted); white-space: nowrap; }
   .meta { color: var(--muted); margin: 2px 0 8px; }
   .look { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+  .look button[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
   .look a, .look button { font: inherit; font-size: 13px; color: var(--ink); text-decoration: none; background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
   .q { margin: 12px 0 0; }
   .q > div:first-child { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
@@ -84,6 +85,7 @@
       <a id="sv" target="_blank" rel="noopener">Street View ↗</a>
       <a id="earth" target="_blank" rel="noopener">3D view ↗</a>
       <button id="zoom">Back to the line</button>
+      <button id="hide" aria-pressed="false">Hide lines (H)</button>
     </div>
 
     <div class="q" data-q="structure"><div>What’s on it</div><div class="chips"></div></div>
@@ -107,7 +109,7 @@
       <button id="csv">Download CSV</button>
       <button id="geojson">Download GeoJSON</button>
     </div>
-    <p class="foot">Answers stay in this browser until you download them. Send the file to John. Keys: ← and → to move. <a href="index.html">All versions</a></p>
+    <p class="foot">Answers stay in this browser until you download them. Send the file to John. Keys: ← and → to move, H to hide the lines. <a href="index.html">All versions</a></p>
   </section>
 </aside>
 
@@ -164,8 +166,25 @@ const padding = () => wide
 // Every line faint, so you can see where you are; the one being checked bright.
 const others = items.map((it, k) => L.polyline(it.lines, { color: '#fff', weight: 2, opacity: 0.45, dashArray: '4 4' })
   .on('click', () => show(k)).addTo(map));
-const casing = L.polyline([], { color: '#14202e', weight: 9, opacity: 0.85, interactive: false }).addTo(map);
-const current = L.polyline([], { color: getComputedStyle(document.documentElement).getPropertyValue('--mark').trim(), weight: 5, interactive: false }).addTo(map);
+// The line being checked is drawn as a box round the boundary, not on it, so what stands
+// there stays in view. The fence can sit a metre or so off the surveyed line.
+const AROUND = 3; // metres either side
+const MARK = getComputedStyle(document.documentElement).getPropertyValue('--mark').trim();
+const box = L.layerGroup().addTo(map);
+function around(lines) {
+  return lines.map(([[lat1, lon1], [lat2, lon2]]) => {
+    const kx = 111320 * Math.cos(lat1 * Math.PI / 180), ky = 110540; // metres per degree
+    const dx = (lon2 - lon1) * kx, dy = (lat2 - lat1) * ky, len = Math.hypot(dx, dy) || 1;
+    const ox = -dy / len * AROUND / kx, oy = dx / len * AROUND / ky; // a step sideways, in degrees
+    return [[lat1 + oy, lon1 + ox], [lat2 + oy, lon2 + ox], [lat2 - oy, lon2 - ox], [lat1 - oy, lon1 - ox]];
+  });
+}
+let hidden = false;
+function hide(on) {
+  hidden = on;
+  document.getElementById('hide').setAttribute('aria-pressed', on);
+  for (const layer of [box, ...others]) on ? layer.remove() : layer.addTo(map);
+}
 
 // ---- the questions -------------------------------------------------------------
 for (const [q, { options }] of Object.entries(QUESTIONS)) {
@@ -233,21 +252,27 @@ function show(k) {
   document.getElementById('meta').textContent = `${item.street ? 'On a street front' : 'Between neighbours'} · about ${item.length} m along the boundary`;
   document.getElementById('sv').href = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lon}`;
   document.getElementById('earth').href = `https://earth.google.com/web/@${lat},${lon},0a,220d,35y,0h,60t,0r`;
-  casing.setLatLngs(item.lines);
-  current.setLatLngs(item.lines);
+  box.clearLayers();
+  for (const corners of around(item.lines)) {
+    L.polygon(corners, { color: '#14202e', weight: 4, opacity: 0.7, fill: false, interactive: false }).addTo(box);
+    L.polygon(corners, { color: MARK, weight: 2, fill: false, interactive: false }).addTo(box);
+  }
   others.forEach((line, j) => line.setStyle({ opacity: j === at ? 0 : 0.45 }));
-  map.fitBounds(current.getBounds(), { ...padding(), maxZoom: 20 });
+  goTo();
   paint();
 }
 
 document.getElementById('note').addEventListener('input', (e) => save({ ...mine(), note: e.target.value }));
-document.getElementById('zoom').addEventListener('click', () => map.fitBounds(current.getBounds(), { ...padding(), maxZoom: 20 }));
+function goTo() { map.fitBounds(L.latLngBounds(around(it().lines).flat()), { ...padding(), maxZoom: 20 }); }
+document.getElementById('zoom').addEventListener('click', goTo);
+document.getElementById('hide').addEventListener('click', () => hide(!hidden));
 document.getElementById('prev').addEventListener('click', () => show(at - 1));
 document.getElementById('next').addEventListener('click', () => show(at + 1));
 addEventListener('keydown', (e) => {
   if (e.target.matches('input, textarea')) return;
   if (e.key === 'ArrowRight') show(at + 1);
   if (e.key === 'ArrowLeft') show(at - 1);
+  if (e.key === 'h' || e.key === 'H') hide(!hidden);
 });
 
 const grid = document.getElementById('grid');
