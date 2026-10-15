@@ -7,6 +7,7 @@ fences change where overland flood water goes, and Auckland Council has no data 
 
 | Version | What it adds | Link |
 | --- | --- | --- |
+| v8 | What stands on each line: fence or wall, hedge, can't tell or nothing, exported as GeoJSON in the brief's fields | https://sponno.github.io/overland-flow/indexv8.html |
 | v7 | Mt Albert pilot tile: the v6 model and tests moved to the hackathon's starter tile, BA31_1000_4245 | https://sponno.github.io/overland-flow/indexv7.html |
 | v6 | Would it need consent: every fence line against the Unitary Plan's two tests for a fence in a flow path | https://sponno.github.io/overland-flow/indexv6.html |
 | v5 | Fences worth checking: the same results as one plain list, with a simpler way to pick a fence | https://sponno.github.io/overland-flow/indexv5.html |
@@ -114,10 +115,14 @@ are new: each fence says which boundary it was in v3 to v5.
 | `indexv4.html` | v4, v3 plus what the LiDAR point cloud shows along each boundary. |
 | `indexv5.html` | v5, the same data as v4 as a plain-language list. |
 | `indexv6.html` | v6, every fence line against the Unitary Plan's two tests. |
-| `indexv7.html` | v7, v6 on the Mt Albert starter tile. Reads its data from `mtalbert/`. Start here. |
+| `indexv7.html` | v7, v6 on the Mt Albert starter tile. Reads its data from `mtalbert/`. |
+| `indexv8.html` | v8, v7 with each fence line sorted by what stands on it, and the GeoJSON download. Start here. |
 | `check.html` | Checking fence lines by eye: each Mt Albert fence line on the aerial photo with Street View and 3D links, answered in the brief's own words (structure, continuity, height, permeability), our laser's answer hidden. Answers stay in the browser until downloaded as CSV or GeoJSON. |
 | `make_sample.py` | Puts the fence lines in a fixed random order with their LINZ boundary lines and writes `sample.js` for `check.html`: `AREA=mtalbert uv run make_sample.py`. |
-| `mtalbert/` | `data.js`, `parcels.js`, `fences.js`, `rules.js`, `lidar.js` and `sample.js` for Mt Albert, made by the same scripts with `AREA=mtalbert`. |
+| `mtalbert/` | `data.js`, `parcels.js`, `fences.js`, `rules.js`, `lidar.js`, `sample.js` and `structures.js` for Mt Albert, made by the same scripts with `AREA=mtalbert`. |
+| `mtalbert/structures.geojson` | The output for Council: one record per fence line in the fields the brief asks for (id, geometry, structure type, source and date, height, continuity, permeability, flow path, influence, confidence, review status, limitations), plus the LINZ parcel ids either side. Not authoritative. |
+| `mtalbert/checks/` | Hand checks downloaded from `check.html`, one CSV and GeoJSON per person. `classify_fences.py` scores against every CSV here. |
+| `classify_fences.py` | The sort. Reads the point classes and Council's infrared photo at the points `scan_fences.py` finds standing on each line, sorts each line into fence or wall, vegetation, uncertain or none, and writes `structures.js` and `structures.geojson`. Caches the infrared tiles in `lidar/infrared/`. |
 | `thumbs/` | Screenshots for the version list. |
 | `flow.js` | The model: fill hollows, send each cell to its steepest downhill neighbour (D8), count what drains through each cell. |
 | `fetch_data.py` | Pulls the terrain, building outlines and Council's flow paths for any point and writes `data.js`. `AREAS` at the top names the areas: Vermont St (files in the root) and Mt Albert (files in `mtalbert/`). |
@@ -181,7 +186,11 @@ AREA=mtalbert uv run fetch_parcels.py
 AREA=mtalbert node rank_fences.js
 AREA=mtalbert node test_rules.js
 AREA=mtalbert uv run scan_fences.py
+AREA=mtalbert uv run classify_fences.py
 ```
+
+`classify_fences.py` (v8) reuses the point cloud tiles and downloads about 300 small
+infrared tiles the first time, which takes a minute or two.
 
 ## Data
 
@@ -193,6 +202,7 @@ AREA=mtalbert uv run scan_fences.py
 | Auckland Part 1 LiDAR point cloud (2024), about 18 points per m² | OpenTopography open bucket, no key: `https://opentopography.s3.sdsc.edu/pc-bulk/NZ24_Auckland/CL2_<sheet>_2024_1000_<row><col>.laz` | Published by LINZ, whose elevation data is CC BY 4.0. Not checked for this survey: see its OpenTopography page |
 | NZ Primary Parcels | LINZ on ArcGIS Online, no API key: `https://services.arcgis.com/xdsHIIxuCWByZiCB/arcgis/rest/services/LINZ_NZ_Primary_Parcels/FeatureServer/0` | CC BY 4.0, Crown copyright, Toitū Te Whenua LINZ |
 | Overland Flow Paths | Auckland Council: `https://services1.arcgis.com/n4yPwebTjJCmXB6W/arcgis/rest/services/Overland_Flow_Paths/FeatureServer/0` | "Creative Commons (refer to Healthy Waters)". Credit: WSP; Auckland Council Healthy Waters, Geospatial |
+| Colour infrared aerial photos 2024-25 (near infrared, green, blue), 15 cm tiles | Auckland Council tiled map service, no key: `https://tiles.arcgis.com/tiles/n4yPwebTjJCmXB6W/arcgis/rest/services/AucklandInfraredImagery2024/MapServer` | CC BY 4.0. Credit: © Auckland Council & Aerial Surveys Ltd |
 | Basemaps (loaded live, not stored here) | OpenStreetMap, or Esri World Street Map when a page is opened from disk; Esri World Imagery | As credited on the map |
 
 Terrain tiles are named by NZ Topo50 sheet, for example `BA31_10000_0405.tiff`.
@@ -291,6 +301,23 @@ much of it the slopes of Ōwairaka):
 
 Not tested yet: any of this against what is on the ground.
 
+From the sort in v8, on the same 103 Mt Albert fence lines:
+
+- The survey's point classes are mixed point by point (see v4), but the share along a
+  whole line tells fence from hedge better. On the 9 hand-checked lines, all 3 with 20% or
+  more unclassified points were a fence or wall, and 3 of the 4 with none were hedges.
+- 34 fence or wall, 35 hedge or plants, 27 can't tell (some built points among plants,
+  often a fence with plants over it), 7 nothing standing.
+- 19 of the 34 fences or walls would move the flow path (5) or hold water back (14) if
+  solid. That is the short list for a look from the street.
+- Against the first 9 hand checks (one person, `mtalbert/checks/`): 6 agree, 2 can't
+  tell, 1 wrong, a wall with plants over it called a hedge. The cut-offs were chosen with
+  those 9 in view, so they are not a fair test yet. The next 40 are.
+- On lines 4 m off every boundary it finds a fence or wall on 41 of 202 (20%), against 34
+  of 103 (33%) on the fence lines. Some of that is sheds, cars and garden walls.
+- The infrared photo did not separate fence from hedge on its own: fences with plants on
+  them read leafy too. It only sets confidence.
+
 ## What the model ignores
 
 - No real fences, kerbs or stormwater pipes. Water moves to the lowest neighbouring square
@@ -303,6 +330,9 @@ Not tested yet: any of this against what is on the ground.
   from a clipped hedge, or solid from see-through. Its cut-offs (70% for all along, a top
   that varies by 0.4 m or less for level) are our choices. It looks up to 1.5 m either
   side of the surveyed boundary, so a fence further off it than that is missed.
+- The sort in v8 calls anything unclassified "built", which includes cars, sheds and
+  trampolines. A fence buried in a hedge reads as plants. Its cut-offs (20% unclassified,
+  10 points, the infrared green index) are ours. Permeability is unknown for every line.
 - Shared boundaries longer than 200 m are left out of the fence test.
 - The rule test in v6 calls it ponding when water stands 10 cm or deeper over 5 m² or more
   of a property, and a moved crossing when the flow path crosses a boundary more than 5 m
