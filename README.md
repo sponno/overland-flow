@@ -329,8 +329,8 @@ From the 2016 comparison in v9, on the same 103 lines:
   repeats. The 2016 survey is denser around these lines, about 1.0 million points against
   0.5 million.
 - 16 lines (16%) are half a metre or more taller or lower than in 2016, against 5 of 202
-  (2%) on lines 4 m off every boundary. Those changes are real: new or raised fences,
-  fences replaced, planting grown or cut. Line 1 in v9 went from about 2.2 m to 0.9 m, and
+  (2%) on lines 4 m off every boundary, so they are not chance. They could be new or
+  raised fences, fences replaced, or planting grown or cut: the scan can't say which. Line 1 in v9 went from about 2.2 m to 0.9 m, and
   the hand check there says a solid fence of 0.5 to 1.2 m.
 - 4 lines lost most of what stood on them and 1 gained, but lines away from any boundary
   change that much 8% of the time, so those are not yet distinguishable from chance.
