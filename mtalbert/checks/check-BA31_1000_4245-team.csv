@@ -1,0 +1,11 @@
+n,fence,parcel_a,parcel_b,street_front,length_m,lat,lon,structure,along,height,water,seen,sure,note,by,at
+1,68,4870842,4695096,0,30,-36.8882756,174.7206506,wall,continuous,1.2-1.8,unknown,3d,sure,has ivy on it but looks like a fence,John,2026-10-15T06:07:39.968Z
+2,72,5124519,8818963,0,13,-36.8877628,174.7221631,unknown,unknown,unknown,unknown,3d,fairly,"looks like a tree, very hard to see",John,2026-10-15T06:09:06.155Z
+3,13,5173487,5048235,0,46,-36.8877956,174.7194787,hedge,continuous,0.5-1.2,partly permeable,3d,fairly,hedge,John,2026-10-15T06:13:33.125Z
+4,24,4720310,7450970,0,66,-36.8892051,174.7216619,wall,continuous,0.5-1.2,solid,3d,fairly,,John,2026-10-15T07:33:04.213Z
+5,6,4870818,4707256,0,37,-36.8885548,174.7210802,fence,continuous,1.2-1.8,solid,3d,fairly,,John,2026-10-15T07:34:23.797Z
+6,14,4726347,5220690,1,41,-36.8855693,174.7229759,fence,continuous,,partly permeable,street view+3d,sure,"white picket fence, not solid",John,2026-10-15T07:36:24.521Z
+7,25,5048238,7338388,0,27,-36.8875232,174.7200143,fence,continuous,0.5-1.2,solid,3d,fairly,fence not sure if permeable,John,2026-10-15T07:39:03.762Z
+8,66,7492976,4692948,0,33,-36.8877889,174.7205922,fence,continuous,1.2-1.8,solid,3d+street view,fairly,cement blocks with white pickets higher up,John,2026-10-15T07:41:42.498Z
+9,74,5150520,4763424,0,18,-36.888962,174.7220665,hedge,,1.2-1.8,partly permeable,3d+street view,sure,green hedge thick and tall,John,2026-10-15T07:43:46.342Z
+10,54,7389507,4915992,0,10,-36.8876848,174.7199338,hedge,,>1.8,partly permeable,3d+street view,guess,looks like a tree - hard to tell for this spot. too inland to see clearly,John,2026-10-15T07:46:07.893Z
