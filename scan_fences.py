@@ -43,6 +43,15 @@ from fetch_parcels import PARCELS_URL
 HERE = Path(__file__).parent
 CACHE = HERE / "lidar"
 POINTS_URL = "https://opentopography.s3.sdsc.edu/pc-bulk/NZ24_Auckland"
+# The two laser surveys we read. The 2016 one is what Council's flow paths were drawn from;
+# its ground model is used for its own heights, so earthworks since don't read as fences.
+SURVEYS = {
+    "2024": dict(points=POINTS_URL, tile="CL2_{sheet}_2024_1000_{rc}", dem=DEM_BASE,
+                 source="LINZ Auckland Part 1 LiDAR point cloud (2024), via OpenTopography"),
+    "2016": dict(points="https://opentopography.s3.sdsc.edu/pc-bulk/NZ16_NAuckland", tile="CL3_{sheet}_2016_1000_{rc}",
+                 dem="https://nz-elevation.s3.ap-southeast-2.amazonaws.com/auckland/auckland-north_2016-2018/dem_1m/2193",
+                 source="LINZ Auckland North LiDAR point cloud (2016-18), via OpenTopography"),
+}
 
 REACH = 2.5          # metres either side of a line that we keep points for
 SEARCH = 1.5         # a fence can sit this far off the surveyed boundary
@@ -64,12 +73,12 @@ def load_js(name):
     return json.loads(text[text.index("{"):text.rindex("}") + 1])
 
 
-def tile_1000(e, n):
+def tile_1000(e, n, survey="2024"):
     """1:1,000 point cloud tile (50 x 50 per Topo50 sheet) for an NZTM point."""
     col, row = int((e - 988000) // 24000), int((6234000 - n) // 36000)
     sheet_w, sheet_n = 988000 + col * 24000, 6234000 - row * 36000
     tr, tc = int((sheet_n - n) // 720) + 1, int((e - sheet_w) // 480) + 1
-    name = f"CL2_{SHEET_ROWS[row]}{col:02d}_2024_1000_{tr:02d}{tc:02d}"
+    name = SURVEYS[survey]["tile"].format(sheet=f"{SHEET_ROWS[row]}{col:02d}", rc=f"{tr:02d}{tc:02d}")
     return name, sheet_w + (tc - 1) * 480, sheet_n - (tr - 1) * 720  # name, west edge, north edge
 
 
@@ -105,17 +114,17 @@ def shifted(segments, by):
     return out
 
 
-def read_points(all_segments):
+def read_points(all_segments, survey="2024"):
     """Every point within REACH of any segment, from whichever tiles they fall in."""
     tiles = {}
     for p, q in all_segments:
         for x in (min(p[0], q[0]) - REACH, max(p[0], q[0]) + REACH):
             for y in (min(p[1], q[1]) - REACH, max(p[1], q[1]) + REACH):
-                name, west, north = tile_1000(x, y)
+                name, west, north = tile_1000(x, y, survey)
                 tiles[name] = (west, north)
     CACHE.mkdir(exist_ok=True)
     # Reading the tiles is the slow part, so the points we keep are saved for next time.
-    stamp = hashlib.sha1(np.round(np.array(all_segments), 2).tobytes() + str(REACH).encode()).hexdigest()[:12]
+    stamp = hashlib.sha1(np.round(np.array(all_segments), 2).tobytes() + f"{REACH} {survey}".encode()).hexdigest()[:12]
     saved = CACHE / f"corridors-{stamp}.npy"
     if saved.exists():
         return np.load(saved), sorted(tiles)
@@ -126,7 +135,7 @@ def read_points(all_segments):
         if not path.exists():
             print(f"downloading {name} ({k + 1} of {len(tiles)})")
             part = path.with_suffix(".part")  # so a stopped download is never mistaken for a tile
-            urllib.request.urlretrieve(f"{POINTS_URL}/{name}.laz", part)
+            urllib.request.urlretrieve(f"{SURVEYS[survey]['points']}/{name}.laz", part)
             part.rename(path)
         las = laspy.read(path)
         x, y = np.asarray(las.x), np.asarray(las.y)
@@ -145,13 +154,13 @@ def read_points(all_segments):
     return points, sorted(tiles)
 
 
-def ground_under(points, dem_tiles):
+def ground_under(points, dem_tiles, dem_url=DEM_BASE):
     """Bare-earth height under each point, from the same 1 m DEM the flow model uses."""
     x, y = points[:, 0], points[:, 1]
     west, east, south, north = x.min() - 2, x.max() + 2, y.min() - 2, y.max() + 2
     ground = np.full(len(points), np.nan)
     for tile in dem_tiles:
-        with rasterio.open(f"/vsicurl/{DEM_BASE}/{tile}.tiff") as src:
+        with rasterio.open(f"/vsicurl/{dem_url}/{tile}.tiff") as src:
             window = from_bounds(west, south, east, north, src.transform).round_offsets().round_lengths()
             dem = src.read(1, window=window, boundless=True, fill_value=np.nan).astype("float64")
             if src.nodata is not None:

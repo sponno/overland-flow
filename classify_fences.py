@@ -21,9 +21,17 @@ It reads two things at the points the laser found standing on each boundary:
   point gets a green reading from the photo. That only sets confidence, not the type: from
   above, a fence with a climber on it looks like a hedge.
 
+Then it runs the same laser scan on the 2016-18 survey, the one Council's flow paths were
+drawn from, and says what changed on each line: more or less of it standing, or the top
+half a metre or more taller or lower.
+
 The cut-offs are mine, chosen with the first 10 hand checks in view, so those 10 are not
-an independent test. The same sort runs on lines 4 m off every boundary to show how often
-it finds "fence or wall" where there is no boundary.
+an independent test. The sort and the 2016 comparison also run on lines 4 m off every
+boundary, to show how often each fires where there is no boundary.
+
+Tried and dropped, because none of them told fence from hedge on the hand checks: laser
+intensity, how many returns each pulse gave, how deep the standing thing is across the
+line, and the 2016 survey's own classes (it files most fences as vegetation).
 """
 import csv
 import json
@@ -35,7 +43,8 @@ from PIL import Image
 from pyproj import Transformer
 
 from fetch_data import OUT
-from scan_fences import CACHE, CONTROL_SHIFT, Index, boundaries, ground_under, load_js, read_points, scan, shifted
+from scan_fences import (ALL_ALONG, CACHE, CONTROL_SHIFT, PART, SURVEYS, Index, boundaries, ground_under, load_js,
+                         read_points, scan, shifted)
 
 INFRARED = "https://tiles.arcgis.com/tiles/n4yPwebTjJCmXB6W/arcgis/rest/services/AucklandInfraredImagery2024/MapServer/tile/20"
 ORIGIN, PIXEL = (-4020900.0, 19998100.0), 0.14929107082380833  # the service's tile grid at level 20: 15 cm
@@ -44,6 +53,9 @@ UNCLASSIFIED, BUILDING, TREE = 1, 6, 5
 BUILT = 0.2   # at least this share of unclassified points reads as built; some but fewer is uncertain
 LEAFY = 0.5   # share of points that read green: above this, plants cover the top
 FEW = 10      # fewer standing points than this is too little to call
+MORE = 0.35   # change since 2016 in the share of a line with something standing on it
+RAISED = 0.5  # metres: change since 2016 in the top of something standing all along both times
+CHANGES = ["same", "taller", "lower", "more standing", "less standing", "can't compare"]
 TYPES = ["fence or wall", "vegetation", "uncertain", "none", "building"]
 # What a hand check's answer counts as.
 EYE = {"fence": "fence or wall", "wall": "fence or wall", "retaining wall": "fence or wall", "gate": "fence or wall",
@@ -100,6 +112,19 @@ def sort(r, cls, leafy):
     return "vegetation", "high" if green > LEAFY else "medium", built, green
 
 
+def since_2016(old, new):
+    """What changed on a line between the 2016 and 2024 scans."""
+    if "along" not in old or "along" not in new or max(old["hidden"], new["hidden"]) > 0.5:
+        return "can't compare"
+    if new["along"] - old["along"] >= MORE:
+        return "more standing"
+    if old["along"] - new["along"] >= MORE:
+        return "less standing"
+    if min(old["along"], new["along"]) >= ALL_ALONG and abs(new["top"] - old["top"]) >= RAISED:
+        return "taller" if new["top"] > old["top"] else "lower"
+    return "same"
+
+
 def flow_test(rule):
     """What a solid 1.8 m fence here did in the flow test (test_rules.js)."""
     return "divert" if rule["moved"] else "block" if rule["pond"] != "none" else "negligible"
@@ -121,10 +146,17 @@ def main():
     fences = ranked["fences"]
     lines = boundaries(fences, grid["bounds"])
     controls = [shifted(segs, by) for segs in lines for by in (CONTROL_SHIFT, -CONTROL_SHIFT)]
-    points, _ = read_points([s for segs in lines + controls for s in segs])
+    every = [s for segs in lines + controls for s in segs]
+    points, _ = read_points(every)
     height = points[:, 2] - ground_under(points, grid["source"]["tiles"])
     index = Index(points)
     cls = points[:, 3].astype(int)
+    # The 2016 survey, with heights from its own ground model.
+    old_points, _ = read_points(every, "2016")
+    old_height = old_points[:, 2] - ground_under(old_points, grid["source"]["tiles"], SURVEYS["2016"]["dem"])
+    old_index = Index(old_points)
+    def then(segs):
+        return scan(segs, old_points, old_height, old_index) if segs else {"verdict": "none"}
 
     photo, west, north = infrared(points)
     reading = green_at(points, photo, west, north)
@@ -142,6 +174,8 @@ def main():
     for k, (f, rule, segs) in enumerate(zip(fences, rules, lines)):
         r = scan(segs, points, height, index, keep=True) if segs else {"verdict": "none"}
         kind, confidence, built, green = sort(r, cls, leafy)
+        old = then(segs)
+        change = since_2016(old, r)
         test = flow_test(rule)
         influence = ("negligible" if kind == "none" else "uncertain" if kind == "vegetation" and test != "negligible" else test)
         standing = kind in ("fence or wall", "vegetation", "uncertain") and r.get("top")
@@ -179,6 +213,9 @@ def main():
             "offset_m": r.get("offset") if standing else None,
             "fence_score": {"fence or wall": 1, "uncertain": 2, "vegetation": 3}.get(kind),
             "flow_test": test,
+            "change_since_2016": change,
+            "height_2016_m": old.get("top") if old.get("along", 0) >= PART else None,
+            "compared_with": SURVEYS["2016"]["source"],
         }
         drawn = []
         for p, q in segs:
@@ -189,14 +226,15 @@ def main():
         eye = EYE[check["structure"]] if check else None
         rows.append({**{k: v for k, v in props.items() if k != "source"}, "eye": eye})
 
-    control = []
+    control, control_change = [], []
     for segs in controls:
         if segs:
             r = scan(segs, points, height, index, keep=True)
             control.append(sort(r, cls, leafy)[0])
+            control_change.append(since_2016(then(segs), r))
 
-    def tally(kinds):
-        return {t: sum(1 for x in kinds if x == t) for t in TYPES}
+    def tally(kinds, names=TYPES):
+        return {t: sum(1 for x in kinds if x == t) for t in names}
     checked = [r for r in rows if r["eye"]]
     score = {"checked": len(checked),
              "agree": sum(1 for r in checked if r["structure_type"] == r["eye"]),
@@ -206,6 +244,10 @@ def main():
     print("boundaries:", counts)
     print(f"lines 4 m off ({len(control)}):", chance)
     print("against hand checks:", score)
+    change = tally([r["change_since_2016"] for r in rows], CHANGES)
+    change_control = tally(control_change, CHANGES)
+    print("since 2016:", change)
+    print("since 2016, lines 4 m off:", change_control)
 
     collection = {
         "type": "FeatureCollection",
@@ -218,7 +260,8 @@ def main():
     (OUT / "structures.geojson").write_text(json.dumps(collection, indent=1))
     out = {"tile": tile, "source": features[0]["properties"]["source"], "cut": round(float(cut), 3),
            "built": BUILT, "leafy": LEAFY, "few": FEW, "counts": counts,
-           "control": chance, "controlLines": len(control), "score": score, "fences": rows}
+           "control": chance, "controlLines": len(control), "score": score,
+           "more": MORE, "raised": RAISED, "change": change, "changeControl": change_control, "fences": rows}
     path = OUT / "structures.js"
     path.write_text("globalThis.STRUCTURE_DATA = " + json.dumps(out, separators=(",", ":")) + ";\n")
     print("wrote", path, "and structures.geojson")

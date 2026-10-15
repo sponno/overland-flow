@@ -7,6 +7,7 @@ fences change where overland flood water goes, and Auckland Council has no data 
 
 | Version | What it adds | Link |
 | --- | --- | --- |
+| v9 | What changed since 2016: the same scan on the 2016 laser survey, line by line | https://sponno.github.io/overland-flow/indexv9.html |
 | v8 | What stands on each line: fence or wall, hedge, can't tell or nothing, exported as GeoJSON in the brief's fields | https://sponno.github.io/overland-flow/indexv8.html |
 | v7 | Mt Albert pilot tile: the v6 model and tests moved to the hackathon's starter tile, BA31_1000_4245 | https://sponno.github.io/overland-flow/indexv7.html |
 | v6 | Would it need consent: every fence line against the Unitary Plan's two tests for a fence in a flow path | https://sponno.github.io/overland-flow/indexv6.html |
@@ -116,13 +117,14 @@ are new: each fence says which boundary it was in v3 to v5.
 | `indexv5.html` | v5, the same data as v4 as a plain-language list. |
 | `indexv6.html` | v6, every fence line against the Unitary Plan's two tests. |
 | `indexv7.html` | v7, v6 on the Mt Albert starter tile. Reads its data from `mtalbert/`. |
-| `indexv8.html` | v8, v7 with each fence line sorted by what stands on it, and the GeoJSON download. Start here. |
+| `indexv8.html` | v8, v7 with each fence line sorted by what stands on it, and the GeoJSON download. |
+| `indexv9.html` | v9, v8 with what changed on each line since the 2016 laser survey. Start here. |
 | `check.html` | Checking fence lines by eye: each Mt Albert fence line on the aerial photo with Street View and 3D links, answered in the brief's own words (structure, continuity, height, permeability), our laser's answer hidden. Answers stay in the browser until downloaded as CSV or GeoJSON. |
 | `make_sample.py` | Puts the fence lines in a fixed random order with their LINZ boundary lines and writes `sample.js` for `check.html`: `AREA=mtalbert uv run make_sample.py`. |
 | `mtalbert/` | `data.js`, `parcels.js`, `fences.js`, `rules.js`, `lidar.js`, `sample.js` and `structures.js` for Mt Albert, made by the same scripts with `AREA=mtalbert`. |
 | `mtalbert/structures.geojson` | The output for Council: one record per fence line in the fields the brief asks for (id, geometry, structure type, source and date, height, continuity, permeability, flow path, influence, confidence, review status, limitations), plus the LINZ parcel ids either side. Not authoritative. |
 | `mtalbert/checks/` | Hand checks downloaded from `check.html`, one CSV and GeoJSON per person. `classify_fences.py` scores against every CSV here. |
-| `classify_fences.py` | The sort. Reads the point classes and Council's infrared photo at the points `scan_fences.py` finds standing on each line, sorts each line into fence or wall, vegetation, uncertain or none, and writes `structures.js` and `structures.geojson`. Caches the infrared tiles in `lidar/infrared/`. |
+| `classify_fences.py` | The sort. Reads the point classes and Council's infrared photo at the points `scan_fences.py` finds standing on each line, sorts each line into fence or wall, vegetation, uncertain or none, and writes `structures.js` and `structures.geojson`. Caches the infrared tiles in `lidar/infrared/`. Also scans every line in the 2016 survey (v9) and records what changed. |
 | `thumbs/` | Screenshots for the version list. |
 | `flow.js` | The model: fill hollows, send each cell to its steepest downhill neighbour (D8), count what drains through each cell. |
 | `fetch_data.py` | Pulls the terrain, building outlines and Council's flow paths for any point and writes `data.js`. `AREAS` at the top names the areas: Vermont St (files in the root) and Mt Albert (files in `mtalbert/`). |
@@ -189,8 +191,9 @@ AREA=mtalbert uv run scan_fences.py
 AREA=mtalbert uv run classify_fences.py
 ```
 
-`classify_fences.py` (v8) reuses the point cloud tiles and downloads about 300 small
-infrared tiles the first time, which takes a minute or two.
+`classify_fences.py` (v8, v9) reuses the 2024 point cloud tiles, downloads about 300
+small infrared tiles and four 2016 point cloud tiles (about 120 MB) the first time, and
+takes a few minutes. After that, about two.
 
 ## Data
 
@@ -202,6 +205,8 @@ infrared tiles the first time, which takes a minute or two.
 | Auckland Part 1 LiDAR point cloud (2024), about 18 points per m² | OpenTopography open bucket, no key: `https://opentopography.s3.sdsc.edu/pc-bulk/NZ24_Auckland/CL2_<sheet>_2024_1000_<row><col>.laz` | Published by LINZ, whose elevation data is CC BY 4.0. Not checked for this survey: see its OpenTopography page |
 | NZ Primary Parcels | LINZ on ArcGIS Online, no API key: `https://services.arcgis.com/xdsHIIxuCWByZiCB/arcgis/rest/services/LINZ_NZ_Primary_Parcels/FeatureServer/0` | CC BY 4.0, Crown copyright, Toitū Te Whenua LINZ |
 | Overland Flow Paths | Auckland Council: `https://services1.arcgis.com/n4yPwebTjJCmXB6W/arcgis/rest/services/Overland_Flow_Paths/FeatureServer/0` | "Creative Commons (refer to Healthy Waters)". Credit: WSP; Auckland Council Healthy Waters, Geospatial |
+| Auckland North LiDAR point cloud (2016-18), for v9 | OpenTopography open bucket, no key: `https://opentopography.s3.sdsc.edu/pc-bulk/NZ16_NAuckland/CL3_<sheet>_2016_1000_<row><col>.laz` | Published by LINZ, whose elevation data is CC BY 4.0. Not checked for this survey |
+| Auckland North LiDAR 1m DEM (2016-18), for v9's heights | LINZ open bucket: `s3://nz-elevation/auckland/auckland-north_2016-2018/dem_1m/2193/` | CC BY 4.0, Toitū Te Whenua LINZ |
 | Colour infrared aerial photos 2024-25 (near infrared, green, blue), 15 cm tiles | Auckland Council tiled map service, no key: `https://tiles.arcgis.com/tiles/n4yPwebTjJCmXB6W/arcgis/rest/services/AucklandInfraredImagery2024/MapServer` | CC BY 4.0. Credit: © Auckland Council & Aerial Surveys Ltd |
 | Basemaps (loaded live, not stored here) | OpenStreetMap, or Esri World Street Map when a page is opened from disk; Esri World Imagery | As credited on the map |
 
@@ -317,6 +322,21 @@ From the sort in v8, on the same 103 Mt Albert fence lines:
   of 103 (33%) on the fence lines. Some of that is sheds, cars and garden walls.
 - The infrared photo did not separate fence from hedge on its own: fences with plants on
   them read leafy too. It only sets confidence.
+
+From the 2016 comparison in v9, on the same 103 lines:
+
+- The two surveys, eight years apart, agree on 77 lines (75%), which says the scan
+  repeats. The 2016 survey is denser around these lines, about 1.0 million points against
+  0.5 million.
+- 16 lines (16%) are half a metre or more taller or lower than in 2016, against 5 of 202
+  (2%) on lines 4 m off every boundary. Those changes are real: new or raised fences,
+  fences replaced, planting grown or cut. Line 1 in v9 went from about 2.2 m to 0.9 m, and
+  the hand check there says a solid fence of 0.5 to 1.2 m.
+- 4 lines lost most of what stood on them and 1 gained, but lines away from any boundary
+  change that much 8% of the time, so those are not yet distinguishable from chance.
+- Four more laser cues for fence vs hedge did not help on the hand checks: return
+  brightness, returns per pulse, how deep the standing thing is across the line, and the
+  2016 survey's own classes, which file most fences as vegetation.
 
 ## What the model ignores
 
