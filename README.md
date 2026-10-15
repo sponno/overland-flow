@@ -115,7 +115,9 @@ are new: each fence says which boundary it was in v3 to v5.
 | `indexv5.html` | v5, the same data as v4 as a plain-language list. |
 | `indexv6.html` | v6, every fence line against the Unitary Plan's two tests. |
 | `indexv7.html` | v7, v6 on the Mt Albert starter tile. Reads its data from `mtalbert/`. Start here. |
-| `mtalbert/` | `data.js`, `parcels.js`, `fences.js`, `rules.js` and `lidar.js` for Mt Albert, made by the same scripts with `AREA=mtalbert`. |
+| `check.html` | Checking fence lines by eye: each Mt Albert fence line on the aerial photo with Street View and 3D links, answered in the brief's own words (structure, continuity, height, permeability), our laser's answer hidden. Answers stay in the browser until downloaded as CSV or GeoJSON. |
+| `make_sample.py` | Puts the fence lines in a fixed random order with their LINZ boundary lines and writes `sample.js` for `check.html`: `AREA=mtalbert uv run make_sample.py`. |
+| `mtalbert/` | `data.js`, `parcels.js`, `fences.js`, `rules.js`, `lidar.js` and `sample.js` for Mt Albert, made by the same scripts with `AREA=mtalbert`. |
 | `thumbs/` | Screenshots for the version list. |
 | `flow.js` | The model: fill hollows, send each cell to its steepest downhill neighbour (D8), count what drains through each cell. |
 | `fetch_data.py` | Pulls the terrain, building outlines and Council's flow paths for any point and writes `data.js`. `AREAS` at the top names the areas: Vermont St (files in the root) and Mt Albert (files in `mtalbert/`). |

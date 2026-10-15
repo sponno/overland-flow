@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Check fence lines</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --ink: #14202e;
+    --muted: #5b6b7c;
+    --line: #e3e8ee;
+    --soft: #f1f4f7;
+    --mark: #ffd400;
+    --done: #2f9e44;
+    --panel: rgba(255, 255, 255, 0.97);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; color: var(--ink); background: #dfe6ec; }
+  #map { position: fixed; inset: 0; }
+  #panel {
+    position: fixed; top: 16px; right: 16px; bottom: 16px; width: 380px; overflow-y: auto; z-index: 1000;
+    background: var(--panel); border-radius: 14px; box-shadow: 0 8px 30px rgba(20, 32, 46, 0.18); padding: 16px 18px;
+  }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  .tag { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; margin-left: 6px; vertical-align: 3px; }
+  .sub { margin: 0 0 10px; color: var(--muted); }
+  .sub b { color: var(--ink); }
+  .who { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .who input { flex: 1; font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; }
+  .item { border-top: 1px solid var(--line); padding-top: 12px; }
+  .item h2 { font-size: 16px; margin: 0; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .item h2 span { font-size: 13px; font-weight: 400; color: var(--muted); white-space: nowrap; }
+  .meta { color: var(--muted); margin: 2px 0 8px; }
+  .look { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+  .look a, .look button { font: inherit; font-size: 13px; color: var(--ink); text-decoration: none; background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+  .q { margin: 12px 0 0; }
+  .q > div:first-child { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips button { font: inherit; font-size: 13px; color: var(--ink); background: #fff; border: 1px solid #c9d2dc; border-radius: 999px; padding: 4px 11px; cursor: pointer; }
+  .chips button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .q.off { opacity: 0.35; pointer-events: none; }
+  textarea { width: 100%; font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; resize: vertical; min-height: 38px; }
+  .nav { display: flex; gap: 8px; margin: 14px 0 6px; }
+  .nav button { flex: 1; font: inherit; font-weight: 600; padding: 9px; border-radius: 10px; border: 1px solid #c9d2dc; background: #fff; cursor: pointer; }
+  .nav button.go { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .progress { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 10px; }
+  .progress p { margin: 0 0 8px; color: var(--muted); }
+  .progress p b { color: var(--ink); }
+  #grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; }
+  #grid button { font: 10px/1 -apple-system, sans-serif; color: var(--muted); aspect-ratio: 1; border: 1px solid var(--line); border-radius: 4px; background: #fff; cursor: pointer; padding: 0; }
+  #grid button.first { border-color: #9aa8b6; }
+  #grid button.done { background: var(--done); border-color: var(--done); color: #fff; }
+  #grid button.now { outline: 2px solid var(--ink); outline-offset: 1px; }
+  .save { display: flex; gap: 8px; margin-top: 12px; }
+  .save button { flex: 1; font: inherit; font-size: 13px; padding: 7px; border-radius: 8px; border: 1px solid #c9d2dc; background: var(--soft); cursor: pointer; }
+  .foot { margin: 12px 0 0; font-size: 12px; color: var(--muted); }
+  .foot a { color: var(--muted); }
+  #tools { position: fixed; top: 16px; left: 16px; z-index: 1000; display: flex; background: #fff; border-radius: 10px; box-shadow: 0 2px 10px rgba(20, 32, 46, 0.18); overflow: hidden; }
+  #tools button { font: inherit; font-weight: 600; border: 0; background: #fff; padding: 7px 12px; cursor: pointer; }
+  #tools button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+  @media (max-width: 640px) {
+    #panel { top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: 58vh; border-radius: 14px 14px 0 0; padding: 14px 16px; }
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="tools">
+  <button id="b-aerial" aria-pressed="true">Aerial</button>
+  <button id="b-streets" aria-pressed="false">Map</button>
+</div>
+
+<aside id="panel">
+  <h1>Check fence lines<span class="tag" id="tile"></span></h1>
+  <p class="sub">What actually stands on each line, by eye, to score our detection against. They come in a random order, so the <b>first 50</b> are a fair sample. Our laser’s answer is hidden so it can’t steer you.</p>
+  <label class="who">Your name <input id="name" autocomplete="name" placeholder="so we know who checked it"></label>
+
+  <section class="item">
+    <h2><b id="title-n"></b><span id="count"></span></h2>
+    <p class="meta" id="meta"></p>
+    <div class="look">
+      <a id="sv" target="_blank" rel="noopener">Street View ↗</a>
+      <a id="earth" target="_blank" rel="noopener">3D view ↗</a>
+      <button id="zoom">Back to the line</button>
+    </div>
+
+    <div class="q" data-q="structure"><div>What’s on it</div><div class="chips"></div></div>
+    <div class="q" data-q="along"><div>How much of the line</div><div class="chips"></div></div>
+    <div class="q" data-q="height"><div>How high</div><div class="chips"></div></div>
+    <div class="q" data-q="water"><div>Can water get through</div><div class="chips"></div></div>
+    <div class="q" data-q="seen"><div>Seen on</div><div class="chips"></div></div>
+    <div class="q" data-q="sure"><div>How sure</div><div class="chips"></div></div>
+    <div class="q"><div>Note</div><textarea id="note" rows="2" placeholder="anything odd: two fences, a gate in it, half hedge…"></textarea></div>
+
+    <div class="nav">
+      <button id="prev">← Back</button>
+      <button id="next" class="go">Next →</button>
+    </div>
+  </section>
+
+  <section class="progress">
+    <p><b id="done-n">0</b> of <span id="total"></span> checked. The outlined squares are the first 50.</p>
+    <div id="grid"></div>
+    <div class="save">
+      <button id="csv">Download CSV</button>
+      <button id="geojson">Download GeoJSON</button>
+    </div>
+    <p class="foot">Answers stay in this browser until you download them. Send the file to John. Keys: ← and → to move. <a href="index.html">All versions</a></p>
+  </section>
+</aside>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="mtalbert/sample.js"></script>
+<script>
+const S = SAMPLE_DATA, items = S.items;
+const STORE = 'overland-check:mtalbert';
+
+// The answers, in the words of the brief's output fields where it has them.
+const QUESTIONS = {
+  structure: { options: [['fence', 'Fence'], ['wall', 'Wall'], ['retaining wall', 'Retaining wall'], ['gate', 'Gate'], ['hedge', 'Hedge'],
+    ['building', 'Building'], ['other', 'Other'], ['none', 'Nothing'], ['unknown', 'Can’t tell']] },
+  along: { options: [['continuous', 'All or nearly all'], ['discontinuous', 'Part of it'], ['unknown', 'Can’t tell']] },
+  height: { options: [['<0.5', 'Under 0.5 m'], ['0.5-1.2', '0.5 to 1.2 m'], ['1.2-1.8', '1.2 to 1.8 m'], ['>1.8', 'Over 1.8 m'], ['unknown', 'Can’t tell']] },
+  water: { options: [['solid', 'Solid to the ground'], ['partly permeable', 'Gap under or between'], ['permeable', 'Open: wire, pool fence'], ['unknown', 'Can’t tell']] },
+  seen: { multi: true, options: [['aerial', 'Aerial'], ['street view', 'Street View'], ['3d', '3D view']] },
+  sure: { options: [['sure', 'Sure'], ['fairly', 'Fairly sure'], ['guess', 'Guess']] },
+};
+
+// Browser storage can be missing or blocked: then answers last until the page closes.
+const load = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
+const keep = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} };
+const answers = load(STORE, {}); // by fence index in fences.js
+const nameBox = document.getElementById('name');
+nameBox.value = load(STORE + ':name', '');
+nameBox.addEventListener('input', () => keep(STORE + ':name', nameBox.value.trim()));
+
+// ---- map ---------------------------------------------------------------------
+const wide = matchMedia('(min-width: 641px)').matches;
+const map = L.map('map', { zoomControl: false, maxZoom: 21 });
+if (wide) L.control.zoom({ position: 'bottomleft' }).addTo(map);
+const basemaps = {
+  aerial: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxNativeZoom: 19, maxZoom: 21, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics' }),
+  streets: location.protocol === 'file:'
+    ? L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+      maxNativeZoom: 19, maxZoom: 21, attribution: 'Street map © Esri and its data providers' })
+    : L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 21, attribution: '© OpenStreetMap contributors' }),
+};
+let basemap = 'aerial';
+basemaps.aerial.addTo(map);
+for (const name of ['aerial', 'streets']) {
+  document.getElementById('b-' + name).addEventListener('click', () => {
+    basemaps[basemap].remove();
+    basemaps[(basemap = name)].addTo(map);
+    for (const n of ['aerial', 'streets']) document.getElementById('b-' + n).setAttribute('aria-pressed', n === name);
+  });
+}
+const padding = () => wide
+  ? { paddingTopLeft: [40, 60], paddingBottomRight: [420, 40] }
+  : { paddingTopLeft: [30, 60], paddingBottomRight: [30, innerHeight * 0.58 + 20] };
+
+// Every line faint, so you can see where you are; the one being checked bright.
+const others = items.map((it, k) => L.polyline(it.lines, { color: '#fff', weight: 2, opacity: 0.45, dashArray: '4 4' })
+  .on('click', () => show(k)).addTo(map));
+const casing = L.polyline([], { color: '#14202e', weight: 9, opacity: 0.85, interactive: false }).addTo(map);
+const current = L.polyline([], { color: getComputedStyle(document.documentElement).getPropertyValue('--mark').trim(), weight: 5, interactive: false }).addTo(map);
+
+// ---- the questions -------------------------------------------------------------
+for (const [q, { options }] of Object.entries(QUESTIONS)) {
+  const box = document.querySelector(`[data-q="${q}"] .chips`);
+  for (const [value, label] of options) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.dataset.value = value;
+    b.addEventListener('click', () => answer(q, value));
+    box.append(b);
+  }
+}
+
+let at = 0;
+const it = () => items[at];
+const mine = () => answers[it().fence] || {};
+
+function answer(q, value) {
+  const a = { ...mine() };
+  if (a.structure === 'none' && ['along', 'height', 'water'].includes(q)) return;
+  if (QUESTIONS[q].multi) {
+    const set = new Set(a[q] || []);
+    set.has(value) ? set.delete(value) : set.add(value);
+    a[q] = [...set];
+  } else a[q] = a[q] === value ? undefined : value;
+  // With nothing on the line, the rest doesn't apply.
+  if (q === 'structure' && a.structure === 'none') Object.assign(a, { along: undefined, height: undefined, water: undefined });
+  save(a);
+  paint();
+}
+
+function save(a) {
+  a.by = nameBox.value.trim();
+  a.at = new Date().toISOString();
+  answers[it().fence] = a;
+  keep(STORE, answers);
+}
+
+const isDone = (item) => !!(answers[item.fence] || {}).structure;
+
+function paint() {
+  const a = mine();
+  for (const [q, { multi }] of Object.entries(QUESTIONS)) {
+    const el = document.querySelector(`[data-q="${q}"]`);
+    el.classList.toggle('off', a.structure === 'none' && ['along', 'height', 'water'].includes(q));
+    for (const b of el.querySelectorAll('button')) {
+      b.setAttribute('aria-pressed', multi ? (a[q] || []).includes(b.dataset.value) : a[q] === b.dataset.value);
+    }
+  }
+  document.getElementById('note').value = a.note || '';
+  const done = items.filter(isDone).length;
+  document.getElementById('done-n').textContent = done;
+  document.querySelectorAll('#grid button').forEach((b, k) => {
+    b.classList.toggle('done', isDone(items[k]));
+    b.classList.toggle('now', k === at);
+  });
+}
+
+function show(k) {
+  at = (k + items.length) % items.length;
+  const item = it();
+  const [lat, lon] = item.centre;
+  document.getElementById('title-n').textContent = `Fence line ${item.n}`;
+  document.getElementById('count').textContent = `${item.n} of ${items.length}`;
+  document.getElementById('meta').textContent = `${item.street ? 'On a street front' : 'Between neighbours'} · about ${item.length} m along the boundary`;
+  document.getElementById('sv').href = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lon}`;
+  document.getElementById('earth').href = `https://earth.google.com/web/@${lat},${lon},0a,220d,35y,0h,60t,0r`;
+  casing.setLatLngs(item.lines);
+  current.setLatLngs(item.lines);
+  others.forEach((line, j) => line.setStyle({ opacity: j === at ? 0 : 0.45 }));
+  map.fitBounds(current.getBounds(), { ...padding(), maxZoom: 20 });
+  paint();
+}
+
+document.getElementById('note').addEventListener('input', (e) => save({ ...mine(), note: e.target.value }));
+document.getElementById('zoom').addEventListener('click', () => map.fitBounds(current.getBounds(), { ...padding(), maxZoom: 20 }));
+document.getElementById('prev').addEventListener('click', () => show(at - 1));
+document.getElementById('next').addEventListener('click', () => show(at + 1));
+addEventListener('keydown', (e) => {
+  if (e.target.matches('input, textarea')) return;
+  if (e.key === 'ArrowRight') show(at + 1);
+  if (e.key === 'ArrowLeft') show(at - 1);
+});
+
+const grid = document.getElementById('grid');
+items.forEach((item, k) => {
+  const b = document.createElement('button');
+  b.textContent = item.n;
+  b.title = `Fence line ${item.n}`;
+  if (item.n <= 50) b.classList.add('first');
+  b.addEventListener('click', () => show(k));
+  grid.append(b);
+});
+document.getElementById('total').textContent = items.length;
+document.getElementById('tile').textContent = S.tile;
+
+// ---- downloads -------------------------------------------------------------------
+const FIELDS = ['structure', 'along', 'height', 'water', 'seen', 'sure', 'note', 'by', 'at'];
+const rows = () => items.filter(isDone).map((item) => ({ item, a: answers[item.fence] }));
+const value = (a, f) => Array.isArray(a[f]) ? a[f].join('+') : a[f] ?? '';
+const fileName = (ext) => `check-${S.tile}-${(nameBox.value.trim() || 'someone').replace(/\W+/g, '-').toLowerCase()}.${ext}`;
+
+function download(text, name, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  Object.assign(document.createElement('a'), { href: url, download: name }).click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+document.getElementById('csv').addEventListener('click', () => {
+  const head = ['n', 'fence', 'parcel_a', 'parcel_b', 'street_front', 'length_m', 'lat', 'lon', ...FIELDS];
+  const cell = (v) => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v;
+  const lines = rows().map(({ item, a }) => [item.n, item.fence, item.between[0], item.between[1] ?? '', item.street, item.length,
+    item.centre[0], item.centre[1], ...FIELDS.map((f) => value(a, f))].map(cell).join(','));
+  download([head.join(','), ...lines].join('\n') + '\n', fileName('csv'), 'text/csv');
+});
+
+document.getElementById('geojson').addEventListener('click', () => {
+  const features = rows().map(({ item, a }) => ({
+    type: 'Feature',
+    geometry: { type: 'MultiLineString', coordinates: item.lines.map((seg) => seg.map(([lat, lon]) => [lon, lat])) },
+    properties: { n: item.n, fence: item.fence, parcels: item.between, street_front: item.street, length_m: item.length,
+      ...Object.fromEntries(FIELDS.map((f) => [f, value(a, f)])) },
+  }));
+  download(JSON.stringify({ type: 'FeatureCollection', features }), fileName('geojson'), 'application/geo+json');
+});
+
+// Start at the first one not yet checked.
+const first = items.findIndex((item) => !isDone(item));
+show(first >= 0 ? first : 0);
+</script>
+</body>
+</html>
