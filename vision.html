@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vision follow-on</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --ink: #14202e; --muted: #5b6b7c; --line: #e3e8ee; --panel: rgba(255, 255, 255, 0.97);
+    --fence: #111418; --hedge: #2f9e44; --veg: #1f6b30; --mixed: #7b4fd6; --unknown: #9aa3ad;
+    --agree: #2f9e44; --differ: #e8372c; --none: #8a94a0;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; color: var(--ink); background: #dfe6ec; }
+  #map { position: fixed; inset: 0; }
+  #panel {
+    position: fixed; top: 16px; left: 16px; width: 400px; max-height: calc(100vh - 32px); overflow-y: auto; z-index: 1000;
+    background: var(--panel); border-radius: 14px; padding: 18px; box-shadow: 0 8px 30px rgba(20, 32, 46, 0.18), 0 0 0 1px rgba(20, 32, 46, 0.06);
+  }
+  .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--mixed); margin: 0 0 6px; }
+  h1 { font-size: 20px; line-height: 1.2; margin: 0 0 8px; letter-spacing: -0.01em; }
+  .sub { margin: 0 0 10px; color: var(--muted); }
+  .sub b { color: var(--ink); }
+  .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin: 16px 0 8px; }
+  .key { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); }
+  .key span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 22px; height: 6px; border-radius: 2px; display: inline-block; }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; background: #fff; cursor: pointer; }
+  .card:hover, .card:focus-visible { border-color: var(--mixed); outline: none; }
+  .card h3 { font-size: 14px; margin: 0 0 6px; display: flex; justify-content: space-between; gap: 8px; }
+  .card h3 small { font-weight: 400; color: var(--muted); }
+  .row { display: grid; grid-template-columns: 24px 1fr 1fr 92px; gap: 6px; font-size: 12.5px; padding: 4px 0; border-top: 1px solid var(--line); align-items: start; }
+  .row.head { border-top: 0; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .tag { white-space: nowrap; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; color: #fff; justify-self: start; }
+  details { color: var(--muted); font-size: 13px; margin-top: 12px; }
+  summary { cursor: pointer; color: var(--ink); font-weight: 600; }
+  details p { margin: 8px 0 0; }
+  .num { background: var(--mixed); color: #fff; border: 0; font-weight: 700; padding: 1px 6px; border-radius: 999px; box-shadow: none; }
+  .num::before { display: none; }
+  .leaflet-popup-content { font-size: 13px; line-height: 1.45; margin: 12px 14px; }
+  .ph { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; }
+  .pl { display: grid; grid-template-columns: 92px 1fr; gap: 2px 10px; margin: 0 0 8px; }
+  .pl dt { color: var(--muted); } .pl dd { margin: 0; font-weight: 600; }
+  .basis { color: var(--muted); font-style: italic; margin: 0 0 8px; }
+  @media (max-width: 640px) { #panel { top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 50vh; border-radius: 14px 14px 0 0; } }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<aside id="panel">
+  <p class="eyebrow">Follow-on question</p>
+  <h1>Can a vision model read the boundary from pictures?</h1>
+  <p class="sub">Ata's tool fed Google Earth's 3D view from above and from <b>four angles</b>, plus <b>Street View</b> for the front boundary, to a vision LLM, which classified each boundary a flow path crosses. Heights come from the laser survey. Here are its calls on <b id="n-props"></b> Mt Albert properties, next to what our laser and photo model (v12) found on the same boundaries.</p>
+
+  <div class="key">
+    <span><span class="sw" style="background:var(--fence)"></span>Fence</span>
+    <span><span class="sw" style="background:var(--hedge)"></span>Hedge</span>
+    <span><span class="sw" style="background:var(--veg)"></span>Vegetation (trees)</span>
+    <span><span class="sw" style="background:var(--mixed)"></span>Mixed</span>
+    <span>Wide band: the vision model. Thin line: our v12.</span>
+  </div>
+
+  <div class="label">Boundary by boundary</div>
+  <div id="cards"></div>
+
+  <details>
+    <summary>How to read this</summary>
+    <p><b>Vision model's call</b> is its own label and its own confidence, which it states is subjective and uncalibrated. Where it gave a reason, the bubble shows it.</p>
+    <p><b>Ours</b> is v12 along the same boundary, within 2 m: metres of fence or wall, hedge, can't tell and open. "Agrees" means our main call for what stands there matches the vision model's.</p>
+    <p><b>Mixed</b> is the vision model saying more than one thing stands along the boundary, which v12 shows as several stretches.</p>
+    <p>A handful of properties only. It shows how the two methods line up, not how accurate either is. Not authoritative.</p>
+  </details>
+</aside>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="mtalbert/data.js?v=9c"></script>
+<script src="mtalbert/aerial.js?v=9c"></script>
+<script src="mtalbert/allfences.js?v=12a"></script>
+<script src="mtalbert/vision.js?v=1"></script>
+<script>
+(() => {
+  const V = VISION_DATA, A = ALLFENCES_DATA;
+  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const COLOUR = { fence: '--fence', hedge: '--hedge', vegetation: '--veg', mixed: '--mixed', unknown: '--unknown' };
+  const OURS = { fence: 'fence or wall', hedge: 'hedge', unknown: "can't tell", open: 'open' };
+  const cap = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+  const flip = (coords) => coords.map(([x, y]) => [y, x]);
+  const lines = (g) => g.type === 'LineString' ? [flip(g.coordinates)] : g.coordinates.map(flip);
+  const rings = (g) => g.type === 'Polygon' ? g.coordinates.map(flip) : g.coordinates.flatMap((p) => p.map(flip));
+
+  // Our main call for what stands on the boundary, against the vision model's.
+  function verdict(b) {
+    const standing = Object.entries(b.ours).filter(([k]) => k !== 'open').sort((x, y) => y[1] - x[1]);
+    if (!standing.length) return ['Not on our map', css('--none')];
+    const main = standing[0][0];
+    const want = { fence: ['fence'], hedge: ['hedge'], vegetation: ['hedge', 'unknown'], mixed: ['fence', 'hedge', 'unknown'], unknown: ['unknown'] }[b.type] || [];
+    if (want.includes(main)) return ['Agrees', css('--agree')];
+    if (main === 'unknown') return ["We can't tell", '#d48a00'];
+    return ['Differs', css('--differ')];
+  }
+  const oursText = (b) => Object.keys(b.ours).length ? Object.entries(b.ours).map(([k, m]) => `${cap(OURS[k])} ${Math.round(m)} m`).join(', ') : '—';
+  const visionText = (b) => `${cap(b.type)}${b.height_m ? `, ${b.height_m.toFixed(1)} m` : ''}${b.confidence != null ? ` (${Math.round(b.confidence * 100)}%)` : ''}`;
+
+  const map = L.map('map', { zoomControl: false, maxZoom: 21 });
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxNativeZoom: 19, maxZoom: 21, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics' }).addTo(map);
+  L.tileLayer('mtalbert/' + AERIAL_DATA.tiles, { bounds: AERIAL_DATA.bounds, minNativeZoom: AERIAL_DATA.minZoom, maxNativeZoom: AERIAL_DATA.maxZoom, maxZoom: 21, zIndex: 2, attribution: AERIAL_DATA.attribution }).addTo(map);
+
+  // Our v12 everywhere, faint, for context.
+  const ourColour = { fence: css('--fence'), hedge: css('--hedge'), unknown: '#eef1f4', open: '#eef1f4' };
+  for (const r of A.lines) for (const [cls, seg] of r.parts) {
+    L.polyline(seg, { color: ourColour[cls], weight: cls === 'fence' || cls === 'hedge' ? 3 : 2, opacity: 0.55, dashArray: cls === 'unknown' ? '5 5' : cls === 'open' ? '1 5' : null, interactive: false }).addTo(map);
+  }
+
+  // The vision model's boundaries: a wide band in its class, numbered.
+  const all = [], byCard = [], ours = [];
+  let k = 0;
+  V.forEach((p, pi) => {
+    L.polygon(rings(p.outline), { color: '#ffffff', weight: 1.5, dashArray: '4 4', fill: false, interactive: false }).addTo(map);
+    const bs = p.boundaries.filter((b) => b.image);
+    byCard[pi] = [];
+    for (const b of bs) {
+      b.k = ++k;
+      const [word, colour] = verdict(b);
+      const html = `<p class="ph">Vision model (Google Earth 3D, four angles, Street View)</p>
+        <dl class="pl"><dt>Says</dt><dd>${cap(b.type)}${b.material ? `, ${b.material}` : ''}</dd>
+        ${b.height_m ? `<dt>Height</dt><dd>${b.height_m.toFixed(1)} m${b.height_range ? ` (${b.height_range[0]} to ${b.height_range[1]} m)` : ''}, from the laser</dd>` : ''}
+        ${b.confidence != null ? `<dt>Its confidence</dt><dd>${Math.round(b.confidence * 100)}%, uncalibrated</dd>` : ''}
+        ${b.continuity && b.continuity !== 'unknown' ? `<dt>Continuity</dt><dd>${b.continuity}</dd>` : ''}</dl>
+        ${b.basis ? `<p class="basis">"${b.basis}"</p>` : ''}
+        ${b.notes.filter((n) => n.note).map((n) => `<p class="basis">${cap(n.type)}: "${n.note}"</p>`).join('')}
+        <p class="ph">Ours (v12), along the same boundary</p><p style="margin:0 0 6px">${oursText(b)}</p>
+        <span class="tag" style="background:${colour}">${word}</span>`;
+      const line = L.polyline(lines(b.geometry), { color: css(COLOUR[b.type] || '--unknown'), weight: 12, opacity: 0.55, lineCap: 'butt' }).addTo(map).bindPopup(html, { maxWidth: 320 });
+      line.bindTooltip(String(b.k), { permanent: true, direction: 'center', className: 'num' });
+      all.push(line); byCard[pi].push(line);
+      if (Object.keys(b.ours).length) ours.push(line);
+    }
+  });
+  const fitAll = () => map.fitBounds(L.featureGroup(ours.length ? ours : all).getBounds().pad(0.25), { paddingTopLeft: [window.innerWidth > 640 ? 432 : 16, 24], paddingBottomRight: [24, 24] });
+  fitAll();
+
+  document.getElementById('n-props').textContent = V.length;
+  document.getElementById('cards').innerHTML = V.map((p, pi) => {
+    const bs = p.boundaries.filter((b) => b.image);
+    return `<div class="card" tabindex="0" data-i="${pi}"><h3>Property ${pi + 1}<small>LINZ ${p.parcel} · ${p.full ? 'every crossed boundary classified' : 'one image note'}</small></h3>
+      <div class="row head"><span>#</span><span>Vision model</span><span>Ours (v12)</span><span></span></div>
+      ${bs.map((b) => { const [w, c] = verdict(b); return `<div class="row"><span><b>${b.k}</b></span><span>${visionText(b)}</span><span>${oursText(b)}</span><span class="tag" style="background:${c}">${w}</span></div>`; }).join('')}</div>`;
+  }).join('');
+  document.querySelectorAll('.card').forEach((el) => {
+    const go = () => { const g = L.featureGroup(byCard[+el.dataset.i]); map.flyToBounds(g.getBounds().pad(0.6), { paddingTopLeft: [window.innerWidth > 640 ? 432 : 16, 24], maxZoom: 20, duration: 0.6 }); };
+    el.addEventListener('click', go);
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+  });
+})();
+</script>
+</body>
+</html>
