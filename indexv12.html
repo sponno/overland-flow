@@ -12,7 +12,7 @@
     --line: #e3e8ee;
     --fence: #111418;
     --hedge: #2f9e44;
-    --retain: #7d858f;
+    --retain: #646c76;
     --unsure: #9aa3ad;
     --nothing: #d3d8de;
     --agree: #ffffff;
@@ -69,9 +69,13 @@
   details p { margin: 8px 0 0; }
   .leaflet-popup-content { font-size: 13px; line-height: 1.45; margin: 12px 14px; }
   .leaflet-popup-content b { font-weight: 600; }
-  .pop-head { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
-  .pop-row { color: var(--muted); }
-  .pop-row b { color: var(--ink); }
+  .pop-head { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+  .pop-list { display: grid; grid-template-columns: 104px 1fr; gap: 3px 12px; margin: 0; }
+  .pop-list dt { color: var(--muted); }
+  .pop-list dd { margin: 0; font-weight: 600; }
+  .pop-part { padding-top: 10px; margin-top: 10px; border-top: 1px solid var(--line); }
+  .pop-verdict { display: inline-block; margin-top: 6px; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #fff; }
+  .pop-none { color: var(--muted); margin: 0; }
   @media (max-width: 640px) {
     #panel { top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 46vh; border-radius: 14px 14px 0 0; padding: 14px 16px; }
   }
@@ -119,7 +123,7 @@
   const CLASSES = [
     { key: 'fence', name: 'Fence or wall', colour: css('--fence'), weight: 4 },
     { key: 'hedge', name: 'Hedge or plants', colour: css('--hedge'), weight: 4 },
-    { key: 'retain', name: 'Retaining wall', colour: css('--retain'), weight: 11 },
+    { key: 'retain', name: 'Retaining wall', colour: css('--retain'), weight: 14 },
     { key: 'unknown', name: "Can't tell", colour: css('--unsure'), weight: 3, dash: '6 6' },
     { key: 'open', name: 'Open: driveway, gate, gap', colour: css('--unsure'), weight: 2, dash: '1 5' },
   ];
@@ -161,17 +165,38 @@
   const under = L.layerGroup().addTo(map), casing = L.layerGroup().addTo(map), over = L.layerGroup().addTo(map), rings = L.layerGroup().addTo(map);
   const style = Object.fromEntries(CLASSES.map((c) => [c.key, c]));
 
+  const PART_NAME = { fence: 'Fence or wall', hedge: 'Hedge or plants', unknown: "Can't tell", open: 'Open' };
+  const item = (label, value) => `<dt>${label}</dt><dd>${value}</dd>`;
+
   function popup(r) {
+    // What the map found: overall, then metres of each kind along the line.
+    const along = {};
+    for (const [cls, [a, b]] of r.parts) along[cls] = (along[cls] || 0) + map.distance(a, b);
+    const mix = ['fence', 'hedge', 'unknown', 'open'].filter((k) => along[k] >= 1).map((k) => `${PART_NAME[k]} ${Math.round(along[k])} m`).join('<br>');
+    const found = [
+      item('Overall', NAME[r.class] || r.class),
+      mix ? item('Along it', mix) : '',
+      item('Retaining wall', r.retaining ? `Yes, ground steps ${r.step_m.toFixed(1)} m along ${r.stepped_m} m` : 'No'),
+      item('Chance it\'s built', `${Math.round(r.chance_built * 100)}% (surest 6 m)`),
+      r.height_m ? item('Height', `${r.height_m.toFixed(1)} m`) : '',
+      item('Boundary', `${Math.round(r.length_m)} m, ${r.street ? 'street front' : 'between neighbours'}`),
+    ].join('');
+
+    // What a person saw, the ground truth, if anyone has checked it.
     const c = r.check;
-    const agree = c && c.class === r.class;
-    const rows = [
-      r.retaining ? `<div class="pop-row">Ground steps <b>${r.step_m.toFixed(1)} m</b> across it along <b>${r.stepped_m} m</b>: retaining</div>` : '',
-      r.class === 'fence' || r.class === 'unknown' ? `<div class="pop-row">Chance something built stands on it: <b>${Math.round(r.chance_built * 100)}%</b> at its surest 6 m</div>` : '',
-      r.height_m ? `<div class="pop-row">Top of what stands there: <b>${r.height_m.toFixed(1)} m</b></div>` : '',
-      `<div class="pop-row">Boundary <b>${Math.round(r.length_m)} m</b>${r.street ? ', on a street front' : ', between neighbours'}</div>`,
-      c ? `<div class="pop-row" style="margin-top:6px">A person checked it (line ${c.n}): <b>${SEEN_NAME[c.class] || c.structure}</b>${c.structure === 'retaining wall' ? ' (retaining wall)' : ''}${c.water && c.water !== 'unknown' ? `, ${c.water}` : ''}. <b style="color:${agree ? css('--hedge') : css('--differ')}">${agree ? 'Agrees' : r.class === 'unknown' ? 'We couldn\'t tell' : 'Differs'}</b></div>` : '',
-    ];
-    return `<div class="pop-head">${NAME[r.class] || r.class}${r.retaining ? ' · retaining wall' : ''}</div>${rows.join('')}`;
+    let truth = '<p class="pop-none">Not checked by a person yet.</p>';
+    if (c) {
+      const agree = c.class === r.class;
+      const verdict = agree ? ['Agrees with the map', css('--hedge')] : r.class === 'unknown' ? ["Map couldn't tell", '#d48a00'] : ['Differs from the map', css('--differ')];
+      truth = `<dl class="pop-list">${[
+        item('Saw', c.structure.charAt(0).toUpperCase() + c.structure.slice(1)),
+        c.water && c.water !== 'unknown' ? item('Water', c.water === 'solid' ? 'Solid' : c.water.charAt(0).toUpperCase() + c.water.slice(1)) : '',
+        c.sure ? item('How sure', c.sure.charAt(0).toUpperCase() + c.sure.slice(1)) : '',
+        item('Check', `Line ${c.n} in check.html`),
+      ].join('')}</dl><span class="pop-verdict" style="background:${verdict[1]}">${verdict[0]}</span>`;
+    }
+    return `<div class="pop-head">Detected by the map</div><dl class="pop-list">${found}</dl>
+      <div class="pop-part"><div class="pop-head">Human check (ground truth)</div>${truth}</div>`;
   }
 
   function draw() {
@@ -183,14 +208,14 @@
       L.polyline(r.line, { color: pale ? '#ffffff' : css('--unsure'), weight: 1, opacity: pale ? 0.45 : 0.8, interactive: false }).addTo(under);
       target(L.polyline(r.line, { opacity: 0, weight: 16 }).addTo(over));
       if (shown.retain) {
-        for (const seg of r.retained) target(L.polyline(seg, { color: style.retain.colour, weight: style.retain.weight, opacity: 0.75, lineCap: 'butt' }).addTo(under));
+        for (const seg of r.retained) target(L.polyline(seg, { color: style.retain.colour, weight: style.retain.weight, opacity: 0.85, lineCap: 'butt' }).addTo(under));
       }
       // What stands, drawn where the laser found it.
       for (const [cls, seg] of r.parts) {
         if (!shown[cls]) continue;
         const s = style[cls];
         if (pale && (cls === 'fence' || cls === 'hedge')) {
-          L.polyline(seg, { color: '#ffffff', weight: s.weight + 3, opacity: 0.7, interactive: false, lineCap: 'butt' }).addTo(casing);
+          L.polyline(seg, { color: '#ffffff', weight: s.weight + 2, opacity: 0.7, interactive: false, lineCap: 'butt' }).addTo(casing);
         }
         // Grey dashes vanish on the photo, so can't-tell and open go pale there.
         const colour = pale && (cls === 'unknown' || cls === 'open') ? '#eef1f4' : s.colour;
