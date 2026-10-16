@@ -53,6 +53,7 @@
   .tools { display: flex; gap: 6px; flex-wrap: wrap; }
   .tools button { padding: 5px 12px; border-radius: 999px; border: 1px solid #d3dae2; background: #fff; font-size: 13px; }
   .tools button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .flow-note { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
   .score { font-size: 13px; }
   .score p { margin: 0 0 8px; }
   .big { font-size: 15px; }
@@ -96,7 +97,9 @@
     <button id="b-aerial" aria-pressed="true">Aerial</button>
     <button id="b-streets" aria-pressed="false">Streets</button>
     <button id="b-checks" aria-pressed="true">People's checks</button>
+    <button id="b-flow" aria-pressed="false">Flow paths</button>
   </div>
+  <p class="flow-note" id="flow-note" hidden></p>
 
   <div class="label">Against people's checks</div>
   <div class="score" id="score"></div>
@@ -116,6 +119,7 @@
 <script src="mtalbert/data.js?v=9c"></script>
 <script src="mtalbert/aerial.js?v=9c"></script>
 <script src="mtalbert/allfences.js?v=12a"></script>
+<script src="mtalbert/baseline.js?v=13a"></script>
 <script>
 (() => {
   const D = FLOW_DATA, A = ALLFENCES_DATA;
@@ -258,6 +262,27 @@
       draw();
     });
   }
+  // Flow paths against Council's terrain-only method (baseline.js): where they run with
+  // buildings and our fences standing, and what that moved.
+  const B = globalThis.BASELINE_DATA;
+  const flow = L.layerGroup();
+  if (B) {
+    const canvas = L.canvas({ padding: 0.3 });
+    const dots = (cells, colour, radius) => cells.forEach((c) => L.circleMarker(c, { renderer: canvas, radius, stroke: false, fillColor: colour, fillOpacity: 0.9, interactive: false }).addTo(flow));
+    dots(B.fences, '#2f7cf6', 1.6);
+    dots(B.lost, '#b8c0ca', 2.2);
+    dots(B.gained, css('--differ'), 2.4);
+    const note = document.getElementById('flow-note');
+    const d = B.fencesVsTerrain;
+    note.innerHTML = `<span style="color:#2f7cf6">●</span> Flow paths with buildings and our fences standing. <span style="color:${css('--differ')}">●</span> New since Council's terrain-only method: ${d.newPathMetres} m. <span style="color:#9aa3ad">●</span> Gone: ${d.lostPathMetres} m. ${d.propertiesGainingPath} properties gain a flow path, ${d.propertiesLosingPath} lose one, and water stands 10 cm or more on ${d.propertiesPonded}.`;
+    document.getElementById('b-flow').addEventListener('click', (e) => {
+      const on = e.currentTarget.getAttribute('aria-pressed') !== 'true';
+      e.currentTarget.setAttribute('aria-pressed', on);
+      note.hidden = !on;
+      if (on) flow.addTo(map); else map.removeLayer(flow);
+    });
+  } else document.getElementById('b-flow').hidden = true;
+
   document.getElementById('b-checks').addEventListener('click', (e) => {
     const b = e.currentTarget;
     b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') !== 'true');
