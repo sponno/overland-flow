@@ -7,6 +7,7 @@ fences change where overland flood water goes, and Auckland Council has no data 
 
 | Version | What it adds | Link |
 | --- | --- | --- |
+| v12 | Every fence in the tile: v10's model on every property boundary, with retaining walls from the ground step, against people's checks | https://sponno.github.io/overland-flow/indexv12.html |
 | v11 | Fences on flow paths: v10 without the planning-rule framing, and the chosen line in its own panel | https://sponno.github.io/overland-flow/indexv11.html |
 | v10 | Fences from laser and photo: computer vision on the 7.5 cm aerial photo with the laser, in 6 m pieces, records in the memo's fields | https://sponno.github.io/overland-flow/indexv10.html |
 | v9 | What changed since 2016: the same scan on the 2016 laser survey, line by line | https://sponno.github.io/overland-flow/indexv9.html |
@@ -123,6 +124,7 @@ are new: each fence says which boundary it was in v3 to v5.
 | `indexv9.html` | v9, v8 with what changed on each line since the 2016 laser survey. |
 | `indexv10.html` | v10, fences from the laser and the aerial photo together, with an evidence picture per line. |
 | `indexv11.html` | v11, v10 with the chosen line in its own panel on the right and no planning-rule framing. Start here. |
+| `indexv12.html`, `detect_all.py`, `mtalbert/allfences.js`, `mtalbert/allfences.geojson` | v12, every property boundary in the tile sorted by the v10 model (fence or wall, hedge, can't tell, nothing), plus a retaining wall where the 1 m bare-earth model steps 0.5 m or more across 6 m or more of the line. Fitted once on the AI labels with every checked line left out; checked lines carry what the person saw. `AREA=mtalbert uv run detect_all.py`. Not authoritative. |
 | `CV.md` | The computer vision work for v10: what was tried, what worked, the numbers and the caveats. |
 | `check.html` | Checking fence lines by eye: each Mt Albert fence line on the aerial photo with Street View and 3D links, answered in the brief's own words (structure, continuity, height, permeability), our laser's answer hidden. Shared by the team: answers save to `checks-api` as you go under your name, Next skips lines already checked or open on someone else's screen, and the downloads hold everyone's answers. |
 | `checks-api/` | The small Cloudflare Worker and D1 database behind `check.html` (`https://overland-checks.john-647.workers.dev`). One current answer per line plus a log of every save. Deploy with `cf deploy` from that folder; tables are in `migrations/`. |

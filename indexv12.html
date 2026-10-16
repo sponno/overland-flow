@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Every fence in the tile v12</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --ink: #14202e;
+    --muted: #5b6b7c;
+    --line: #e3e8ee;
+    --fence: #111418;
+    --hedge: #2f9e44;
+    --retain: #7d858f;
+    --unsure: #9aa3ad;
+    --nothing: #d3d8de;
+    --agree: #ffffff;
+    --differ: #e8372c;
+    --panel: rgba(255, 255, 255, 0.96);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; color: var(--ink); background: #dfe6ec; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  #map { position: fixed; inset: 0; background: #dfe6ec; }
+  #panel {
+    position: fixed; top: 16px; left: 16px; width: 360px; max-height: calc(100vh - 32px); overflow-y: auto;
+    background: var(--panel); backdrop-filter: blur(10px); border-radius: 14px; padding: 18px;
+    box-shadow: 0 8px 30px rgba(20, 32, 46, 0.18), 0 0 0 1px rgba(20, 32, 46, 0.06); z-index: 1000;
+  }
+  h1 { font-size: 20px; line-height: 1.2; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .tag { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; margin-left: 6px; vertical-align: 3px; }
+  .sub { margin: 0 0 4px; color: var(--muted); }
+  .sub b { color: var(--ink); font-weight: 600; }
+  .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin: 16px 0 8px; }
+  .legend { display: grid; gap: 4px; }
+  .legend button {
+    display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 10px;
+    padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; text-align: left;
+  }
+  .legend button[aria-pressed="false"] { opacity: 0.4; }
+  .legend .n { font-variant-numeric: tabular-nums; color: var(--muted); }
+  .swatch { height: 12px; display: block; position: relative; }
+  .swatch::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); }
+  .sw-fence::after { border-top: 4px solid var(--fence); }
+  .sw-hedge::after { border-top: 4px solid var(--hedge); }
+  .sw-retain::after { border-top: 10px solid var(--retain); opacity: 0.75; }
+  .sw-unknown::after { border-top: 3px dashed var(--unsure); }
+  .sw-none::after { border-top: 2px solid var(--nothing); }
+  .tools { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tools button { padding: 5px 12px; border-radius: 999px; border: 1px solid #d3dae2; background: #fff; font-size: 13px; }
+  .tools button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .score { font-size: 13px; }
+  .score p { margin: 0 0 8px; }
+  .big { font-size: 15px; }
+  .big b { font-variant-numeric: tabular-nums; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; font-variant-numeric: tabular-nums; margin: 6px 0 8px; }
+  th, td { padding: 4px 5px; text-align: center; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; }
+  th:first-child, td:first-child { text-align: left; }
+  td.hit { background: #e6f4ea; font-weight: 700; }
+  td.zero { color: #c3cad2; }
+  .ring { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 2.5px solid; vertical-align: -1px; margin-right: 4px; }
+  details { color: var(--muted); font-size: 13px; margin-top: 14px; }
+  summary { cursor: pointer; color: var(--ink); font-weight: 600; }
+  details p { margin: 8px 0 0; }
+  .leaflet-popup-content { font-size: 13px; line-height: 1.45; margin: 12px 14px; }
+  .leaflet-popup-content b { font-weight: 600; }
+  .pop-head { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+  .pop-row { color: var(--muted); }
+  .pop-row b { color: var(--ink); }
+  @media (max-width: 640px) {
+    #panel { top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 46vh; border-radius: 14px 14px 0 0; padding: 14px 16px; }
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<aside id="panel">
+  <h1>Every fence in the tile<span class="tag">v12</span></h1>
+  <p class="sub">All <b id="s-lines"></b> property boundaries in <b id="s-tile"></b>, sorted from the 2024 laser survey and the 7.5 cm aerial photo. Nothing about water here: only what stands where. Tap a line for what we measured.</p>
+
+  <div class="label">What we think stands there</div>
+  <div class="legend" id="legend"></div>
+
+  <div class="label">Map</div>
+  <div class="tools">
+    <button id="b-aerial" aria-pressed="true">Aerial</button>
+    <button id="b-streets" aria-pressed="false">Streets</button>
+    <button id="b-checks" aria-pressed="true">People's checks</button>
+  </div>
+
+  <div class="label">Against people's checks</div>
+  <div class="score" id="score"></div>
+
+  <details>
+    <summary>How it works, and what it gets wrong</summary>
+    <p><b>Fence, hedge, can't tell.</b> The same model as v10. Each boundary is cut into 6 m pieces and each piece gets a chance of being built, from three things: how much of the laser survey's standing points it left unclassified, how thin the standing thing is, and how sharp a straight edge the photo shows. A boundary is a fence where any piece reaches 80%.</p>
+    <p><b>Retaining wall.</b> Where the bare ground drops 0.5 m or more across the boundary, beyond the slope either side, along 6 m or more of it. Read from the 1 m bare-earth model, so a low wall or one set back from the boundary is missed.</p>
+    <p><b>Fitted on AI-made labels.</b> The model learned from labels Claude made from the evidence pictures, unchecked. Every line a person checked was left out of the fit, so the checks score it fairly.</p>
+    <p><b>Known misses.</b> A fence behind or under a hedge reads as plants. A wire fence barely shows in the laser. Cars on a driveway read as built. Fence and wall can't be told apart, nor solid from see-through.</p>
+    <p><b>Lines.</b> LINZ legal boundaries, not surveyed fences. A fence more than 1.5 m off its boundary, or not on a boundary at all, isn't looked for.</p>
+  </details>
+</aside>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="mtalbert/data.js?v=9c"></script>
+<script src="mtalbert/aerial.js?v=9c"></script>
+<script src="mtalbert/allfences.js?v=12a"></script>
+<script>
+(() => {
+  const D = FLOW_DATA, A = ALLFENCES_DATA;
+  const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const CLASSES = [
+    { key: 'fence', name: 'Fence or wall', colour: css('--fence'), weight: 4 },
+    { key: 'hedge', name: 'Hedge or plants', colour: css('--hedge'), weight: 4 },
+    { key: 'retain', name: 'Retaining wall', colour: css('--retain'), weight: 11 },
+    { key: 'unknown', name: "Can't tell", colour: css('--unsure'), weight: 3, dash: '6 6' },
+    { key: 'none', name: 'Nothing standing', colour: css('--nothing'), weight: 2 },
+  ];
+  const NAME = { fence: 'Fence or wall', hedge: 'Hedge or plants', unknown: "Can't tell", none: 'Nothing standing', building: 'Building on the line' };
+  const SEEN_NAME = { fence: 'fence or wall', hedge: 'hedge', none: 'nothing', building: 'a building', other: 'something else' };
+  const lines = A.lines;
+  const shown = Object.fromEntries(CLASSES.map((c) => [c.key, true]));
+
+  document.getElementById('s-lines').textContent = lines.length.toLocaleString();
+  document.getElementById('s-tile').textContent = A.tile;
+
+  // The map: the pilot tile, on the 2024 photo.
+  const wide = window.matchMedia('(min-width: 641px)').matches;
+  const tile = L.latLngBounds(D.focus.corners);
+  const map = L.map('map', { zoomControl: false, minZoom: 14, maxZoom: 21, maxBounds: tile.pad(1) });
+  if (wide) L.control.zoom({ position: 'bottomright' }).addTo(map);
+  else map.attributionControl.setPosition('topright');
+  const basemaps = {
+    // openstreetmap.org blocks tiles for a page opened from disk; Esri's street map stands in.
+    streets: location.protocol === 'file:'
+      ? L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+        maxNativeZoom: 19, maxZoom: 21, attribution: 'Street map © Esri and its data providers' })
+      : L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxNativeZoom: 19, maxZoom: 21, attribution: '© OpenStreetMap contributors' }),
+    aerial: L.layerGroup([
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxNativeZoom: 19, maxZoom: 21, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics' }),
+      L.tileLayer('mtalbert/' + AERIAL_DATA.tiles, {
+        bounds: AERIAL_DATA.bounds, minNativeZoom: AERIAL_DATA.minZoom, maxNativeZoom: AERIAL_DATA.maxZoom, maxZoom: 21,
+        zIndex: 2, attribution: AERIAL_DATA.attribution }),
+    ]),
+  };
+  let basemap = 'aerial';
+  basemaps.aerial.addTo(map);
+  L.polygon(D.focus.corners, { color: '#ffffff', weight: 2, dashArray: '8 6', fill: false, interactive: false }).addTo(map);
+  map.fitBounds(tile, wide ? { paddingTopLeft: [392, 24], paddingBottomRight: [24, 24] } : { paddingTopLeft: [8, 48], paddingBottomRight: [8, window.innerHeight * 0.46] });
+
+  // Retaining walls underneath, then a pale casing so black reads on the photo, then the class.
+  const under = L.layerGroup().addTo(map), casing = L.layerGroup().addTo(map), over = L.layerGroup().addTo(map), rings = L.layerGroup().addTo(map);
+  const style = Object.fromEntries(CLASSES.map((c) => [c.key, c]));
+
+  function popup(r) {
+    const c = r.check;
+    const agree = c && c.class === r.class;
+    const rows = [
+      r.retaining ? `<div class="pop-row">Ground steps <b>${r.step_m.toFixed(1)} m</b> across it along <b>${r.stepped_m} m</b>: retaining</div>` : '',
+      r.class === 'fence' || r.class === 'unknown' ? `<div class="pop-row">Chance something built stands on it: <b>${Math.round(r.chance_built * 100)}%</b> at its surest 6 m</div>` : '',
+      r.height_m ? `<div class="pop-row">Top of what stands there: <b>${r.height_m.toFixed(1)} m</b></div>` : '',
+      `<div class="pop-row">Boundary <b>${Math.round(r.length_m)} m</b>${r.street ? ', on a street front' : ', between neighbours'}</div>`,
+      c ? `<div class="pop-row" style="margin-top:6px">A person checked it (line ${c.n}): <b>${SEEN_NAME[c.class] || c.structure}</b>${c.structure === 'retaining wall' ? ' (retaining wall)' : ''}${c.water && c.water !== 'unknown' ? `, ${c.water}` : ''}. <b style="color:${agree ? css('--hedge') : css('--differ')}">${agree ? 'Agrees' : r.class === 'unknown' ? 'We couldn\'t tell' : 'Differs'}</b></div>` : '',
+    ];
+    return `<div class="pop-head">${NAME[r.class] || r.class}${r.retaining ? ' · retaining wall' : ''}</div>${rows.join('')}`;
+  }
+
+  function draw() {
+    for (const g of [under, casing, over, rings]) g.clearLayers();
+    for (const r of lines) {
+      if (r.class === 'building') continue;
+      const s = style[r.class];
+      const retain = r.retaining && shown.retain;
+      if (!shown[r.class] && !retain) continue;
+      const target = (layer) => layer.bindPopup(() => popup(r), { maxWidth: 280 });
+      if (retain) target(L.polyline(r.line, { color: style.retain.colour, weight: style.retain.weight, opacity: 0.75, lineCap: 'butt' }).addTo(under));
+      if (shown[r.class]) {
+        if (basemap === 'aerial' && (r.class === 'fence' || r.class === 'hedge')) {
+          L.polyline(r.line, { color: '#ffffff', weight: s.weight + 3, opacity: 0.7, interactive: false }).addTo(casing);
+        }
+        // Grey dashes vanish on the photo, so can't-tell goes pale there.
+        const colour = basemap === 'aerial' && r.class === 'unknown' ? '#eef1f4' : s.colour;
+        target(L.polyline(r.line, { color: colour, weight: s.weight, dashArray: s.dash, opacity: r.class === 'none' ? 0.8 : 1 }).addTo(over));
+        // A wider invisible line so thin ones are easy to tap.
+        target(L.polyline(r.line, { opacity: 0, weight: 16 }).addTo(over));
+      }
+    }
+    if (document.getElementById('b-checks').getAttribute('aria-pressed') === 'true') {
+      for (const r of lines) {
+        if (!r.check) continue;
+        const mid = r.line[Math.floor(r.line.length / 2)];
+        const at = [(mid[0][0] + mid[1][0]) / 2, (mid[0][1] + mid[1][1]) / 2];
+        const agree = r.check.class === r.class;
+        L.circleMarker(at, {
+          radius: 6, weight: 3, color: agree ? css('--agree') : r.class === 'unknown' ? '#f5aa00' : css('--differ'),
+          fillColor: { fence: css('--fence'), hedge: css('--hedge'), none: '#ffffff', building: '#8a5a44' }[r.check.class] || '#999', fillOpacity: 1,
+        }).bindPopup(() => popup(r), { maxWidth: 280 }).addTo(rings);
+      }
+    }
+  }
+
+  // The legend is the filter.
+  const counts = { ...A.counts, retain: A.retaining };
+  const legend = document.getElementById('legend');
+  for (const c of CLASSES) {
+    const b = document.createElement('button');
+    b.setAttribute('aria-pressed', 'true');
+    b.innerHTML = `<span class="swatch sw-${c.key}"></span><span>${c.name}</span><span class="n">${(counts[c.key] || 0).toLocaleString()}</span>`;
+    b.addEventListener('click', () => { shown[c.key] = !shown[c.key]; b.setAttribute('aria-pressed', shown[c.key]); draw(); });
+    legend.appendChild(b);
+  }
+
+  for (const name of ['aerial', 'streets']) {
+    document.getElementById('b-' + name).addEventListener('click', () => {
+      if (basemap === name) return;
+      map.removeLayer(basemaps[basemap]);
+      basemap = name;
+      basemaps[name].addTo(map);
+      for (const n of ['aerial', 'streets']) document.getElementById('b-' + n).setAttribute('aria-pressed', n === name);
+      draw();
+    });
+  }
+  document.getElementById('b-checks').addEventListener('click', (e) => {
+    const b = e.currentTarget;
+    b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') !== 'true');
+    draw();
+  });
+
+  // The score: what people saw against what the map says, on every line both looked at.
+  const checked = lines.filter((r) => r.check);
+  const people = ['fence', 'hedge', 'none', 'building'], ours = ['fence', 'hedge', 'unknown', 'none', 'building'];
+  const n = (p, o) => checked.filter((r) => r.check.class === p && r.class === o).length;
+  const builtSeen = checked.filter((r) => r.check.class === 'fence');
+  const found = builtSeen.filter((r) => r.class === 'fence').length;
+  const flagged = builtSeen.filter((r) => r.class === 'unknown').length;
+  const calls = checked.filter((r) => r.class === 'fence');
+  const right = calls.filter((r) => r.check.class === 'fence').length;
+  const pct = (a, b) => b ? Math.round(100 * a / b) + '%' : '–';
+  const rs = A.retainScore;
+  const short = { fence: 'Fence', hedge: 'Hedge', unknown: "Can't tell", none: 'Nothing', building: 'Building' };
+  document.getElementById('score').innerHTML = `
+    <p class="big">Finds <b>${found} of ${builtSeen.length}</b> fences people saw (${pct(found, builtSeen.length)}), and flags ${flagged} more as can't tell.</p>
+    <p class="big">When it says fence it's right <b>${right} of ${calls.length}</b> times (${pct(right, calls.length)}).</p>
+    <table>
+      <tr><th>People saw ↓ · map said →</th>${ours.map((o) => `<th>${short[o]}</th>`).join('')}</tr>
+      ${people.map((p) => `<tr><td>${short[p]}</td>${ours.map((o) => { const v = n(p, o); return `<td class="${p === o && v ? 'hit' : v ? '' : 'zero'}">${v}</td>`; }).join('')}</tr>`).join('')}
+    </table>
+    <p>Retaining walls people saw: <b>${rs.wall_found} of ${rs.wall_found + rs.wall_missed}</b> found from the ground step; ${rs.false_alarm} other checked line${rs.false_alarm === 1 ? '' : 's'} step${rs.false_alarm === 1 ? 's' : ''} too.</p>
+    <p><span class="ring" style="border-color:${css('--agree')};background:${css('--fence')}"></span>agrees
+       <span class="ring" style="border-color:${css('--differ')};background:${css('--fence')};margin-left:10px"></span>differs
+       <span class="ring" style="border-color:#f5aa00;background:${css('--fence')};margin-left:10px"></span>we couldn't tell.
+       The dot's fill is what the person saw. ${checked.length} lines checked, all on boundaries a flow path crosses.</p>`;
+
+  draw();
+})();
+</script>
+</body>
+</html>
