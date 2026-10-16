@@ -199,11 +199,13 @@ class Index:
         return np.concatenate(found) if found else np.empty(0, dtype=np.int64)
 
 
-def scan(segments, points, height, index, profile=False, keep=False):
+def scan(segments, points, height, index, profile=False, keep=False, trace=False):
     """What stands along one line, metre by metre. Each straight run is fitted on its own.
-    keep=True also returns which points the standing thing is made of, as "on"."""
+    keep=True also returns which points the standing thing is made of, as "on".
+    trace=True also returns, per straight run, the fitted line's ends and which of its metres
+    stand, were seen and are building, as "trace"."""
     total = dict(length=0, open=0, seen=0, standing=0)
-    tops, shown, picked, offsets, run = [], [], [], [], 0.0
+    tops, shown, picked, offsets, traced, run = [], [], [], [], [], 0.0
     # Try the surveyed line first, then further off it, so a tie goes to the closest fit.
     fits = sorted(((t, o) for t in np.radians(np.arange(-TILT, TILT + 0.01, 0.5)) for o in np.arange(-SEARCH, SEARCH + 0.001, 0.05)),
                   key=lambda fit: (abs(fit[0]), abs(fit[1])))
@@ -245,13 +247,17 @@ def scan(segments, points, height, index, profile=False, keep=False):
         if keep:
             picked.append(near[ok][on & ~built[metre]])
             offsets.append((float(shift), int(standing.sum())))
+        if trace:
+            normal = np.array([-u[1], u[0]])
+            ends = [p + u * a + normal * (np.tan(tilt) * (a - length / 2) + shift) for a in (0.0, length)]
+            traced.append({"ends": ends, "length": length, "standing": standing, "seen": seen, "built": built})
         if profile:
             side = (np.abs(from_line) <= 0.3) & (h > -0.5) & (h < 4.5)
             shown += [(round(run + float(a), 1), round(float(z), 2), int(c)) for a, z, c in zip(along[side], h[side], cls[side])]
         run += length
 
     if not total["open"]:
-        return {"length": total["length"], "verdict": "building" if total["length"] else "none"}
+        return {"length": total["length"], "verdict": "building" if total["length"] else "none", **({"trace": traced} if trace else {})}
     out = {
         "length": total["length"], "open": total["open"],
         "along": round(total["standing"] / max(1, total["seen"]), 2),
@@ -266,6 +272,8 @@ def scan(segments, points, height, index, profile=False, keep=False):
         # How far the fitted line sits off the surveyed one, averaged over the metres that stand.
         weight = sum(w for _, w in offsets)
         out["offset"] = round(sum(abs(o) * w for o, w in offsets) / weight, 2) if weight else None
+    if trace:
+        out["trace"] = traced
     if profile:
         if len(shown) > 1500:  # plenty to draw
             shown = [shown[i] for i in np.random.default_rng(0).choice(len(shown), 1500, replace=False)]

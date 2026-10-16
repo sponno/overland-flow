@@ -47,7 +47,9 @@
   .sw-hedge::after { border-top: 4px solid var(--hedge); }
   .sw-retain::after { border-top: 10px solid var(--retain); opacity: 0.75; }
   .sw-unknown::after { border-top: 3px dashed var(--unsure); }
-  .sw-none::after { border-top: 2px solid var(--nothing); }
+  .sw-open::after { border-top: 2px dotted var(--unsure); }
+  .sw-legal::after { border-top: 1px solid var(--unsure); }
+  .legal-note { display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: center; padding: 4px 8px; color: var(--muted); font-size: 13px; }
   .tools { display: flex; gap: 6px; flex-wrap: wrap; }
   .tools button { padding: 5px 12px; border-radius: 999px; border: 1px solid #d3dae2; background: #fff; font-size: 13px; }
   .tools button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
@@ -79,10 +81,11 @@
 <div id="map"></div>
 <aside id="panel">
   <h1>Every fence in the tile<span class="tag">v12</span></h1>
-  <p class="sub">All <b id="s-lines"></b> property boundaries in <b id="s-tile"></b>, sorted from the 2024 laser survey and the 7.5 cm aerial photo. Nothing about water here: only what stands where. Tap a line for what we measured.</p>
+  <p class="sub">All <b id="s-lines"></b> property boundaries in <b id="s-tile"></b>, sorted from the 2024 laser survey and the 7.5 cm aerial photo, and drawn where the laser found something standing. Nothing about water here: only what stands where. Tap a line for what we measured.</p>
 
   <div class="label">What we think stands there</div>
   <div class="legend" id="legend"></div>
+  <div class="legal-note"><span class="swatch sw-legal"></span><span>The legal boundary (LINZ), for reference</span></div>
 
   <div class="label">Map</div>
   <div class="tools">
@@ -96,8 +99,9 @@
 
   <details>
     <summary>How it works, and what it gets wrong</summary>
+    <p><b>Where it's drawn.</b> The laser scan fits a line through whatever stands within 1.5 m of the boundary, and draws each metre of it where something 0.5 to 2.6 m high stands. Where the laser saw bare ground and nothing on it, the line is open: a driveway, a gate, a path. Breaks under 2 m are bridged, and bits under 2 m standing alone, like a letterbox, are left out.</p>
     <p><b>Fence, hedge, can't tell.</b> The same model as v10. Each boundary is cut into 6 m pieces and each piece gets a chance of being built, from three things: how much of the laser survey's standing points it left unclassified, how thin the standing thing is, and how sharp a straight edge the photo shows. A boundary is a fence where any piece reaches 80%.</p>
-    <p><b>Retaining wall.</b> Where the bare ground drops 0.5 m or more across the boundary, beyond the slope either side, along 6 m or more of it. Read from the 1 m bare-earth model, so a low wall or one set back from the boundary is missed.</p>
+    <p><b>Retaining wall.</b> Where the bare ground drops 0.5 m or more across the boundary, beyond the slope either side, drawn on the legal line along the stretch that steps, for boundaries that step along 6 m or more. Read from the 1 m bare-earth model, so a low wall or one set back from the boundary is missed. People often record a fence on top of a retaining wall as a fence, so the checks can't fully score this.</p>
     <p><b>Fitted on AI-made labels.</b> The model learned from labels Claude made from the evidence pictures, unchecked. Every line a person checked was left out of the fit, so the checks score it fairly.</p>
     <p><b>Known misses.</b> A fence behind or under a hedge reads as plants. A wire fence barely shows in the laser. Cars on a driveway read as built. Fence and wall can't be told apart, nor solid from see-through.</p>
     <p><b>Lines.</b> LINZ legal boundaries, not surveyed fences. A fence more than 1.5 m off its boundary, or not on a boundary at all, isn't looked for.</p>
@@ -117,7 +121,7 @@
     { key: 'hedge', name: 'Hedge or plants', colour: css('--hedge'), weight: 4 },
     { key: 'retain', name: 'Retaining wall', colour: css('--retain'), weight: 11 },
     { key: 'unknown', name: "Can't tell", colour: css('--unsure'), weight: 3, dash: '6 6' },
-    { key: 'none', name: 'Nothing standing', colour: css('--nothing'), weight: 2 },
+    { key: 'open', name: 'Open: driveway, gate, gap', colour: css('--unsure'), weight: 2, dash: '1 5' },
   ];
   const NAME = { fence: 'Fence or wall', hedge: 'Hedge or plants', unknown: "Can't tell", none: 'Nothing standing', building: 'Building on the line' };
   const SEEN_NAME = { fence: 'fence or wall', hedge: 'hedge', none: 'nothing', building: 'a building', other: 'something else' };
@@ -172,22 +176,25 @@
 
   function draw() {
     for (const g of [under, casing, over, rings]) g.clearLayers();
+    const pale = basemap === 'aerial';
     for (const r of lines) {
-      if (r.class === 'building') continue;
-      const s = style[r.class];
-      const retain = r.retaining && shown.retain;
-      if (!shown[r.class] && !retain) continue;
       const target = (layer) => layer.bindPopup(() => popup(r), { maxWidth: 280 });
-      if (retain) target(L.polyline(r.line, { color: style.retain.colour, weight: style.retain.weight, opacity: 0.75, lineCap: 'butt' }).addTo(under));
-      if (shown[r.class]) {
-        if (basemap === 'aerial' && (r.class === 'fence' || r.class === 'hedge')) {
-          L.polyline(r.line, { color: '#ffffff', weight: s.weight + 3, opacity: 0.7, interactive: false }).addTo(casing);
+      // The legal boundary, faint, and a wide invisible line on it so every boundary is easy to tap.
+      L.polyline(r.line, { color: pale ? '#ffffff' : css('--unsure'), weight: 1, opacity: pale ? 0.45 : 0.8, interactive: false }).addTo(under);
+      target(L.polyline(r.line, { opacity: 0, weight: 16 }).addTo(over));
+      if (shown.retain) {
+        for (const seg of r.retained) target(L.polyline(seg, { color: style.retain.colour, weight: style.retain.weight, opacity: 0.75, lineCap: 'butt' }).addTo(under));
+      }
+      // What stands, drawn where the laser found it.
+      for (const [cls, seg] of r.parts) {
+        if (!shown[cls]) continue;
+        const s = style[cls];
+        if (pale && (cls === 'fence' || cls === 'hedge')) {
+          L.polyline(seg, { color: '#ffffff', weight: s.weight + 3, opacity: 0.7, interactive: false, lineCap: 'butt' }).addTo(casing);
         }
-        // Grey dashes vanish on the photo, so can't-tell goes pale there.
-        const colour = basemap === 'aerial' && r.class === 'unknown' ? '#eef1f4' : s.colour;
-        target(L.polyline(r.line, { color: colour, weight: s.weight, dashArray: s.dash, opacity: r.class === 'none' ? 0.8 : 1 }).addTo(over));
-        // A wider invisible line so thin ones are easy to tap.
-        target(L.polyline(r.line, { opacity: 0, weight: 16 }).addTo(over));
+        // Grey dashes vanish on the photo, so can't-tell and open go pale there.
+        const colour = pale && (cls === 'unknown' || cls === 'open') ? '#eef1f4' : s.colour;
+        target(L.polyline(seg, { color: colour, weight: s.weight, dashArray: s.dash, lineCap: cls === 'open' ? 'round' : 'butt' }).addTo(over));
       }
     }
     if (document.getElementById('b-checks').getAttribute('aria-pressed') === 'true') {
@@ -204,13 +211,14 @@
     }
   }
 
-  // The legend is the filter.
-  const counts = { ...A.counts, retain: A.retaining };
+  // The legend is the filter, with how much of each there is along the boundaries.
+  const metres = { ...A.metres, retain: A.retainedMetres };
+  const km = (m) => m >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.round(m) + ' m';
   const legend = document.getElementById('legend');
   for (const c of CLASSES) {
     const b = document.createElement('button');
     b.setAttribute('aria-pressed', 'true');
-    b.innerHTML = `<span class="swatch sw-${c.key}"></span><span>${c.name}</span><span class="n">${(counts[c.key] || 0).toLocaleString()}</span>`;
+    b.innerHTML = `<span class="swatch sw-${c.key}"></span><span>${c.name}</span><span class="n">${km(metres[c.key] || 0)}</span>`;
     b.addEventListener('click', () => { shown[c.key] = !shown[c.key]; b.setAttribute('aria-pressed', shown[c.key]); draw(); });
     legend.appendChild(b);
   }

@@ -8,8 +8,14 @@
 
 v10 looks only at the boundaries a flow path crosses. This looks at every boundary two
 parcels share inside the tile, with the same model and the same 6 m pieces
-(classify_cv.py), and nothing about flow. It adds one thing: a step in the bare ground
-across the line, which is what a retaining wall leaves in the 1 m DEM.
+(classify_cv.py), and nothing about flow.
+
+Each boundary is drawn where the laser found something, not on the legal line: the scan
+fits a line through what stands within 1.5 m of the boundary (scan_fences.py), and each
+metre of that line where something 0.5 to 2.6 m high stands takes the class of its 6 m
+piece. Metres where the laser saw the ground and nothing on it are open: a driveway, a
+gate, a path. A retaining wall is where the bare ground steps across the boundary in the
+1 m DEM, drawn on the legal line.
 
 The model is fitted once on the AI reference labels, leaving out every line people
 checked, so the checks score it fairly. Lines people checked carry their answer, so the
@@ -18,6 +24,7 @@ allfences.geojson.
 """
 import csv
 import json
+import math
 from collections import Counter
 from datetime import date
 
@@ -25,10 +32,10 @@ import numpy as np
 import shapely
 from pyproj import Transformer
 from shapely import STRtree, line_merge
-from shapely.geometry import LineString, MultiLineString, Point, Polygon, shape
+from shapely.geometry import LineString, MultiLineString, Polygon, shape
 from shapely.ops import transform as reproject
 
-from classify_cv import BUILT_LABELS, FEW, PLANT_LABELS, SOURCES, chance, cut, fit, inputs, runs, sort
+from classify_cv import BUILT_LABELS, CANOPY, FEW, HI, MIXED, PIECE, PLANT_LABELS, SOURCES, chance, cut, fit, inputs, sort
 from classify_fences import EYE, PIXEL as IR_PIXEL, hand_checks, infrared
 from cv_features import features
 from evidence import ACROSS, Frame, aerial_in, buildings, hold, infrared_in
@@ -38,9 +45,10 @@ from scan_fences import MIN_SEGMENT, Index, boundaries, ground_under, load_js, r
 
 PUBLIC = {"Road", "Hydro"}
 NEAR, FAR = 1.5, 4.0  # metres either side of the line: the ground step, and the slope beyond it
-SAMPLE = 1.0          # metres between ground samples along the line
 RETAIN = 0.5          # metres of step, beyond the slope around it, that a retaining wall leaves
-RETAIN_RUN = 6.0      # metres of line that must step that much
+RETAIN_RUN = 6.0      # metres of line that must step that much for the line to count as retaining
+GAP = 2               # metres: shorter breaks are bridged, and shorter bits standing alone dropped
+STANDS = ("fence", "hedge", "unknown")
 
 # What people saw, in the map's classes.
 SEEN = {"fence or wall": "fence", "vegetation": "hedge", "none": "none", "building": "building"}
@@ -83,26 +91,65 @@ def shared_lines(parcels, tile):
     return out
 
 
-def ground_step(segs, dem_tiles):
-    """Metres of line where the bare ground drops RETAIN or more across it, beyond the slope
-    either side, and the median of those drops."""
-    samples = []
-    for p, q in segs:
-        u = (q - p) / np.hypot(*(q - p))
-        n = np.array([-u[1], u[0]])
-        for t in np.arange(SAMPLE / 2, np.hypot(*(q - p)), SAMPLE):
-            c = p + u * t
-            samples.append([c + n * d for d in (-FAR, -NEAR, NEAR, FAR)])
-    if not samples:
-        return 0.0, 0.0
-    pts = np.array(samples).reshape(-1, 2)
-    z = ground_under(np.column_stack([pts, np.zeros(len(pts))]), dem_tiles).reshape(-1, 4)
+def ground_steps(lines, dem_tiles):
+    """For every metre of every segment, how far the bare ground drops across the line beyond
+    the slope either side. One DEM read for the lot."""
+    where, shape_of = [], []
+    for line in lines:
+        for p, q in line["segments"]:
+            length = float(np.hypot(*(q - p)))
+            u = (q - p) / length
+            n = np.array([-u[1], u[0]])
+            centres = np.minimum(np.arange(math.ceil(length)) + 0.5, length - 0.01)
+            for t in centres:
+                c = p + u * t
+                where += [c + n * d for d in (-FAR, -NEAR, NEAR, FAR)]
+            shape_of.append(len(centres))
+    xy = np.array(where)
+    z = ground_under(np.column_stack([xy, np.zeros(len(xy))]), dem_tiles).reshape(-1, 4)
     far_l, near_l, near_r, far_r = z.T
-    # The drop across the line, less what the slope either side would give over the same width.
     slope = ((near_l - far_l) + (far_r - near_r)) / 2 / (FAR - NEAR)
-    excess = np.abs((near_r - near_l) - slope * 2 * NEAR)
-    stepped = excess[np.isfinite(excess) & (excess >= RETAIN)]
-    return len(stepped) * SAMPLE, float(np.median(stepped)) if len(stepped) else 0.0
+    excess = np.nan_to_num(np.abs((near_r - near_l) - slope * 2 * NEAR))
+    out, at = [], 0
+    for n in shape_of:
+        out.append(excess[at:at + n])
+        at += n
+    return out
+
+
+def runs_of(values):
+    """(start, end, value) for each run of equal values."""
+    out, start = [], 0
+    for i in range(1, len(values) + 1):
+        if i == len(values) or values[i] != values[start]:
+            out.append((start, i, values[start]))
+            start = i
+    return out
+
+
+def tidy(classes):
+    """Bridge breaks shorter than GAP between things standing, then drop bits standing alone
+    shorter than GAP (a letterbox, a post by a driveway)."""
+    classes = list(classes)
+    rs = runs_of(classes)
+    for k, (a, b, v) in enumerate(rs):
+        if v == "open" and b - a < GAP and 0 < k < len(rs) - 1 and rs[k - 1][2] in STANDS and rs[k + 1][2] in STANDS:
+            classes[a:b] = [rs[k - 1][2]] * (b - a)
+    rs = runs_of(classes)
+    for k, (a, b, v) in enumerate(rs):
+        if v in STANDS and b - a < GAP and all(rs[j][2] == "open" for j in (k - 1, k + 1) if 0 <= j < len(rs)):
+            classes[a:b] = ["open"] * (b - a)
+    return classes
+
+
+def piece_class(score, measured):
+    if score is None:
+        return "unknown"  # too few points in this piece to call
+    if score >= HI:
+        return "fence"
+    if score >= MIXED or (measured["canopy"] or 0) > CANOPY:
+        return "unknown"
+    return "hedge"
 
 
 def main():
@@ -155,66 +202,101 @@ def main():
         seen[pair] = {"n": int(c["n"]), "structure": c["structure"], "water": c["water"], "sure": c["sure"],
                       "class": SEEN.get(EYE.get(c["structure"]), "other")}
 
-    def latlng(pairs):
-        out = []
-        for a, b in pairs:
-            (x1, x2), (y1, y2) = to_wgs.transform([a[0], b[0]], [a[1], b[1]])
-            out.append([[round(y1, 7), round(x1, 7)], [round(y2, 7), round(x2, 7)]])
-        return out
+    def ll(p):
+        x, y = to_wgs.transform(p[0], p[1])
+        return [round(y, 7), round(x, 7)]
+
+    print("reading the ground steps")
+    steps = iter(ground_steps(lines, grid["source"]["tiles"]))
 
     print(f"sorting {len(lines)} boundaries")
-    rows = []
+    rows, metres = [], Counter()
     for i, line in enumerate(lines):
         segs = line["segments"]
         m = measure(segs)
-        laser = scan(segs, points, height, index)
+        laser = scan(segs, points, height, index, trace=True)
         pieces = cut(segs)
         measured = [measure([pc], margin=0.0) for pc in pieces]
         scores = [chance(model, inputs(x)) if x["standing"] >= FEW else None for x in measured]
         best = max([s for s in scores if s is not None], default=0.0)
         kind = sort(m, laser, best, chance(model, inputs(m)) if m["standing"] >= FEW else 0.0)[0]
-        stepped, step = ground_step(segs, grid["source"]["tiles"])
+
+        parts, retained, stepped, first = [], [], [], 0
+        for (p, q), tr in zip(segs, laser.get("trace") or [None] * len(segs)):
+            length = float(np.hypot(*(q - p)))
+            n_pieces = max(1, int(round(length / PIECE)))
+            excess = next(steps)
+            if tr is not None:
+                # Each metre that stands takes its 6 m piece's class; seen and empty is open.
+                piece_of = lambda a: first + min(n_pieces - 1, int(a / (length / n_pieces)))
+                classes = ["building" if tr["built"][k] else
+                           piece_class(scores[piece_of(k + 0.5)], measured[piece_of(k + 0.5)]) if tr["standing"][k] else
+                           "open" if tr["seen"][k] else "unknown"
+                           for k in range(len(tr["standing"]))]
+                a_end, b_end = tr["ends"]
+                at = lambda a: ll(a_end + (b_end - a_end) * min(a, length) / length)
+                for a, b, v in runs_of(tidy(classes)):
+                    if v != "building":
+                        parts.append([v, [at(a), at(b)]])
+                        metres[v] += min(b, length) - a
+            # Retaining: runs of the legal line where the ground steps, gaps under GAP bridged.
+            stepping = tidy(["unknown" if e >= RETAIN else "open" for e in excess])
+            for a, b, v in runs_of(stepping):
+                if v == "unknown":
+                    retained.append([ll(p + (q - p) * a / length), ll(p + (q - p) * min(b, length) / length)])
+                    stepped += excess[a:b].tolist()
+            first += n_pieces
+
         check = seen.get(frozenset(line["between"]))
         rows.append({
             "id": i, "between": line["between"], "street": line["street"],
             "length_m": round(sum(float(np.hypot(*(q - p))) for p, q in segs), 1),
-            "class": kind, "retaining": stepped >= RETAIN_RUN, "step_m": round(step, 2), "stepped_m": stepped,
-            "chance_built": round(best, 2), "height_m": laser.get("top"), "standing": m["standing"],
-            "check": check, "line": latlng(segs), "fence": latlng(runs(pieces, scores)) if kind == "fence" else [],
+            "class": kind, "retaining": len(stepped) >= RETAIN_RUN, "step_m": round(float(np.median(stepped)), 2) if stepped else 0.0,
+            "stepped_m": len(stepped), "chance_built": round(best, 2), "height_m": laser.get("top"), "standing": m["standing"],
+            "check": check, "line": [[ll(p), ll(q)] for p, q in segs], "parts": parts,
+            "retained": retained if len(stepped) >= RETAIN_RUN else [],
         })
         if (i + 1) % 100 == 0:
-            print(f"  {i + 1}")
+            print(f"  {i + 1}", flush=True)
 
-    # How it does where people looked. Retaining walls count as built for the type, and are
-    # scored on their own against the ground step.
+    # How it does where people looked, line by line, as people answered.
     checked = [r for r in rows if r["check"]]
     pairs = Counter((r["check"]["class"], r["class"]) for r in checked)
     retain = Counter((r["check"]["structure"] == "retaining wall", r["retaining"]) for r in checked)
     summary = {
         "tile": grid["focus"]["name"], "made": date.today().isoformat(), "retain": RETAIN, "retainRun": RETAIN_RUN,
         "trainedOn": len(train), "counts": dict(Counter(r["class"] for r in rows)),
-        "retaining": sum(r["retaining"] for r in rows), "checked": len(checked),
+        "metres": {k: round(v) for k, v in metres.items()},
+        "retaining": sum(r["retaining"] for r in rows),
+        "retainedMetres": sum(r["stepped_m"] for r in rows if r["retaining"]),
+        "checked": len(checked),
         "agreement": [[a, b, n] for (a, b), n in sorted(pairs.items())],
         "retainScore": {"wall_found": retain[(True, True)], "wall_missed": retain[(True, False)],
                         "false_alarm": retain[(False, True)], "agree_none": retain[(False, False)]},
         "sources": {k: SOURCES[k] for k in ("laser", "photo", "infrared", "buildings", "parcels")}
                    | {"ground": "LINZ Auckland Part 1 LiDAR 1 m DEM 2024"},
     }
-    print(json.dumps({k: summary[k] for k in ("counts", "retaining", "checked", "agreement", "retainScore")}, indent=1))
+    print(json.dumps({k: summary[k] for k in ("counts", "metres", "retaining", "retainedMetres", "checked", "agreement", "retainScore")}, indent=1))
 
     (OUT / "allfences.js").write_text("globalThis.ALLFENCES_DATA = " + json.dumps({**summary, "lines": rows}, separators=(",", ":"), default=float) + ";\n")
+    name = {"fence": "fence or wall", "hedge": "hedge or plants", "unknown": "can't tell", "open": "open (driveway, gate, gap)"}
+    features_out = []
+    for r in rows:
+        base = {"line": r["id"], "parcels": r["between"], "street": r["street"], "checked_as": r["check"]["structure"] if r["check"] else None}
+        for v, (a, b) in r["parts"]:
+            features_out.append({"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[a[1], a[0]], [b[1], b[0]]]},
+                                 "properties": {"class": name[v], **base}})
+        for a, b in r["retained"]:
+            features_out.append({"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[a[1], a[0]], [b[1], b[0]]]},
+                                 "properties": {"class": "retaining (ground steps 0.5 m or more)", **base}})
     collection = {
         "type": "FeatureCollection",
-        "name": f"Every property boundary in {summary['tile']}, sorted from the laser and the aerial photo",
+        "name": f"What stands along every property boundary in {summary['tile']}, from the laser and the aerial photo",
         "disclaimer": "Not authoritative. A hackathon prototype (Auckland, 16 October 2026): what the laser and photo suggest "
-                      "stands on each boundary, for a person to check. The model was fitted on AI-made labels.",
-        "made": summary["made"],
-        "features": [{
-            "type": "Feature",
-            "geometry": {"type": "MultiLineString", "coordinates": [[[a[1], a[0]], [b[1], b[0]]] for a, b in r["line"]]},
-            "properties": {k: r[k] for k in ("id", "street", "length_m", "class", "retaining", "step_m", "chance_built", "height_m")}
-                          | {"parcels": r["between"], "checked_as": r["check"]["structure"] if r["check"] else None},
-        } for r in rows],
+                      "stands along each boundary, drawn where the laser found it, for a person to check. The model was "
+                      "fitted on AI-made labels.",
+        "made": summary["made"], "sources": summary["sources"],
+        "features": features_out,
     }
     (OUT / "allfences.geojson").write_text(json.dumps(collection, default=float))
     print("wrote allfences.js and allfences.geojson")
